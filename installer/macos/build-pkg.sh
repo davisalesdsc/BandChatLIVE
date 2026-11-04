@@ -1,9 +1,10 @@
 #!/bin/bash
 # Monta o instalador .pkg do macOS (um arquivo só, com escolha de componentes).
+# Um instalador por tipo de Mac: Apple Silicon (arm64) ou Intel (x86_64).
 #
-#   build-pkg.sh <pasta_com_os_bundles> <pasta_dos_modelos> <versao> <saida.pkg>
+#   build-pkg.sh <pasta_com_os_bundles> <pasta_dos_modelos> <versao> <arm64|x86_64> <saida.pkg>
 #
-# <pasta_com_os_bundles> precisa ter (universais, já assinados):
+# <pasta_com_os_bundles> precisa ter (da arquitetura indicada, já assinados):
 #     BandChatLIVE.vst3   BandChatLIVE.component   BandChatLIVE.app
 # <pasta_dos_modelos> pode ter ggml-base-q5_1.bin e/ou ggml-small-q5_1.bin
 # (cada um que existir vira uma opção no instalador).
@@ -16,7 +17,20 @@ BUNDLES="$(cd "$1" && pwd)"
 MODELS=""
 if [ -d "$2" ]; then MODELS="$(cd "$2" && pwd)"; fi
 VERSION="$3"
-OUT="$4"
+ARCH="$4"
+OUT="$5"
+case "$ARCH" in
+  arm64)  MAC="Apple Silicon"; OUTRO="Intel";         QUER_ARM=true ;;
+  x86_64) MAC="Intel";         OUTRO="Apple Silicon"; QUER_ARM=false ;;
+  *) echo "arquitetura inválida: $ARCH (use arm64 ou x86_64)"; exit 1 ;;
+esac
+# confere que os bundles são mesmo da arquitetura do instalador
+for b in "$BUNDLES"/*.vst3 "$BUNDLES"/*.component "$BUNDLES"/*.app; do
+  bin="$b/Contents/MacOS/$(basename "${b%.*}")"
+  if [ -f "$bin" ] && command -v lipo >/dev/null && ! lipo "$bin" -verify_arch "$ARCH" 2>/dev/null; then
+    echo "ERRO: $bin não é $ARCH"; exit 1
+  fi
+done
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 NAME="BandChatLIVE"
@@ -121,8 +135,8 @@ add_model () {   # <arquivo> <id> <titulo> <descricao> <marcado:true|false>
   MODEL_REFS+="  <pkg-ref id=\"$ID.modelo.$id\" version=\"$VERSION\" onConclusion=\"none\">modelo-$id.pkg</pkg-ref>"$'\n'
   echo "  componente: modelo-$id.pkg ($file, $mb MB)"
 }
-add_model ggml-base-q5_1.bin  rapido      "Modelo Rápido"      "Responde rápido. Para Mac Intel ou computador mais fraco." true
-add_model ggml-small-q5_1.bin equilibrado "Modelo Equilibrado" "Reconhece melhor e serve na maioria dos Macs." true
+add_model ggml-base-q5_1.bin  rapido      "Modelo Rápido"      "Responde rápido, também em Mac mais antigo." true
+add_model ggml-small-q5_1.bin equilibrado "Modelo Equilibrado" "Reconhece melhor; precisa de um Mac mais forte." true
 
 MODELS_OUTLINE=""
 if [ -n "$MODEL_LINES" ]; then
@@ -136,11 +150,24 @@ fi
 cat > "$WORK/Distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-  <title>BandChatLIVE $VERSION</title>
+  <title>BandChatLIVE $VERSION para Mac $MAC</title>
   <organization>com.davisales</organization>
   <welcome file="welcome.html" mime-type="text/html"/>
   <conclusion file="conclusion.html" mime-type="text/html"/>
   <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+  <installation-check script="checarMac()"/>
+  <script><![CDATA[
+  function checarMac() {
+    var appleSilicon = (system.sysctl('hw.optional.arm64') == 1);
+    if (appleSilicon != $QUER_ARM) {
+      my.result.type = 'Fatal';
+      my.result.title = 'Instalador errado para este Mac';
+      my.result.message = 'Este instalador é para Mac $MAC, e este Mac é $OUTRO. Baixe o instalador "$OUTRO" na mesma página.';
+      return false;
+    }
+    return true;
+  }
+  ]]></script>
   <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
   <volume-check>
     <allowed-os-versions><os-version min="11.0"/></allowed-os-versions>
@@ -175,7 +202,7 @@ xmllint --noout "$WORK/Distribution.xml"
 # --- telas (boas-vindas / conclusão) com a versão ------------------------------
 mkdir -p "$WORK/resources"
 for f in welcome.html conclusion.html; do
-  sed "s/@VERSAO@/$VERSION/g" "$HERE/resources/$f" > "$WORK/resources/$f"
+  sed -e "s/@VERSAO@/$VERSION/g" -e "s/@MAC@/$MAC/g" "$HERE/resources/$f" > "$WORK/resources/$f"
 done
 
 SIGN=()

@@ -11,69 +11,58 @@ on:
 
 env:
   BUILD_TYPE: Release
-  # modelos que vão dentro dos instaladores (o "Mais preciso" é baixado pelo plugin)
+  # modelos que vão dentro do instalador do Windows (no Mac: por arquitetura, abaixo)
   MODELS: "ggml-base-q5_1.bin ggml-small-q5_1.bin"
   MODELS_URL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
 jobs:
   # ---------------------------------------------------------------------------
-  # macOS: uma compilação por arquitetura (o ggml só liga NEON/AVX2 assim)
+  # macOS: um instalador por tipo de Mac, cada um compilado, testado (com o
+  # Whisper de verdade), empacotado e instalado NA PRÓPRIA arquitetura
   # ---------------------------------------------------------------------------
   macos:
-    runs-on: macos-14
     strategy:
+      fail-fast: false
       matrix:
-        arch: [ arm64, x86_64 ]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configurar
-        run: cmake -S . -B build -G Xcode -DTAV_OSX_ARCH=${{ matrix.arch }} -DTAV_BUILD_TESTS=${{ matrix.arch == 'arm64' && 'ON' || 'OFF' }}
-      - name: Compilar
-        run: cmake --build build --config $BUILD_TYPE --target BandChatLIVE_VST3 BandChatLIVE_AU BandChatLIVE_Standalone -- -quiet
-      - name: Testes do motor + Whisper de verdade (arm64, GPU se houver)
-        if: matrix.arch == 'arm64'
-        run: |
-          cmake --build build --config $BUILD_TYPE --target TavTests -- -quiet
-          bash installer/baixar-modelos.sh modelos ggml-base-q5_1.bin
-          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav modelos/ggml-base-q5_1.bin
-          echo "--- log do motor"; cat ~/Library/Application\ Support/BandChatLIVE/transcritor.log 2>/dev/null | tail -20 || true
-      - name: Guardar fatia
-        run: |
-          mkdir -p slice
-          for f in VST3/"BandChatLIVE.vst3" AU/"BandChatLIVE.component" Standalone/"BandChatLIVE.app"; do
-            ditto "build/BandChatLIVE_artefacts/$BUILD_TYPE/$f" "slice/$(basename "$f")"
-          done
-          cd slice && zip -qry ../slice.zip .     # zip preserva links e permissões dos bundles
-      - uses: actions/upload-artifact@v4
-        with:
-          name: slice-${{ matrix.arch }}
-          path: slice.zip
-
-  # ---------------------------------------------------------------------------
-  # macOS: binário universal + assinatura + .pkg + teste de instalação
-  # ---------------------------------------------------------------------------
-  macos-pkg:
-    needs: macos
-    runs-on: macos-14
+        include:
+          - arch: arm64
+            runner: macos-14
+            label: AppleSilicon
+            models: "ggml-base-q5_1.bin ggml-small-q5_1.bin"
+          - arch: x86_64
+            runner: macos-15-intel
+            label: Intel
+            models: "ggml-base-q5_1.bin"
+    runs-on: ${{ matrix.runner }}
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { name: slice-arm64, path: dl-arm64 }
-      - uses: actions/download-artifact@v4
-        with: { name: slice-x86_64, path: dl-x86_64 }
-      - name: Juntar as fatias (lipo)
+      - name: Configurar
         run: |
-          set -e
-          mkdir -p arm64 x86_64 out
-          (cd arm64 && unzip -q ../dl-arm64/slice.zip)
-          (cd x86_64 && unzip -q ../dl-x86_64/slice.zip)
-          for b in "BandChatLIVE.vst3" "BandChatLIVE.component" "BandChatLIVE.app"; do
-            ditto "arm64/$b" "out/$b"
-            bin="Contents/MacOS/BandChatLIVE"
-            lipo -create "arm64/$b/$bin" "x86_64/$b/$bin" -output "out/$b/$bin"
-            lipo -info "out/$b/$bin"
+          sysctl -n machdep.cpu.brand_string || true
+          cmake -S . -B build -G Xcode -DTAV_OSX_ARCH=${{ matrix.arch }} -DTAV_BUILD_TESTS=ON
+      - name: Compilar
+        run: cmake --build build --config $BUILD_TYPE --target BandChatLIVE_VST3 BandChatLIVE_AU BandChatLIVE_Standalone TavTests -- -quiet
+
+      - name: Modelos de voz (cache)
+        uses: actions/cache@v4
+        with:
+          path: modelos
+          key: modelos-${{ matrix.models }}
+      - name: Baixar modelos
+        run: bash installer/baixar-modelos.sh modelos ${{ matrix.models }}
+      - name: Testes do motor + Whisper de verdade
+        run: |
+          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav modelos/ggml-base-q5_1.bin
+          echo "--- log do motor"; tail -20 ~/Library/Application\ Support/BandChatLIVE/transcritor.log 2>/dev/null || true
+
+      - name: Juntar os bundles
+        run: |
+          mkdir -p out
+          for f in VST3/BandChatLIVE.vst3 AU/BandChatLIVE.component Standalone/BandChatLIVE.app; do
+            ditto "build/BandChatLIVE_artefacts/$BUILD_TYPE/$f" "out/$(basename "$f")"
+            lipo -info "out/$(basename "$f")/Contents/MacOS/BandChatLIVE"
           done
 
       - name: Importar certificados (só se configurados)
@@ -109,19 +98,12 @@ jobs:
           fi
           for b in out/*; do codesign --verify --deep --strict "$b"; done
 
-      - name: Modelos de voz (cache)
-        uses: actions/cache@v4
-        with:
-          path: modelos
-          key: modelos-${{ env.MODELS }}
-      - name: Baixar modelos
-        run: bash installer/baixar-modelos.sh modelos $MODELS
-
       - name: Montar o .pkg
         run: |
           VERSION="$(tr -d '[:space:]' < VERSAO)"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          bash installer/macos/build-pkg.sh out modelos "$VERSION" "BandChatLIVE-$VERSION-macOS.pkg"
+          echo "PKG=BandChatLIVE-$VERSION-macOS-${{ matrix.label }}.pkg" >> $GITHUB_ENV
+          bash installer/macos/build-pkg.sh out modelos "$VERSION" ${{ matrix.arch }} "BandChatLIVE-$VERSION-macOS-${{ matrix.label }}.pkg"
 
       - name: Notarizar (só se configurado)
         if: env.HAS_SIGNING == 'true'
@@ -130,21 +112,20 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          xcrun notarytool submit "BandChatLIVE-$VERSION-macOS.pkg" \
-                --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple "BandChatLIVE-$VERSION-macOS.pkg"
+          xcrun notarytool submit "$PKG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$PKG"
 
       - name: Testar a instalação
         run: |
           set -e
-          sudo installer -pkg "BandChatLIVE-$VERSION-macOS.pkg" -target /
+          sudo installer -pkg "$PKG" -target /
           for p in "/Library/Audio/Plug-Ins/VST3/BandChatLIVE.vst3" \
                    "/Library/Audio/Plug-Ins/Components/BandChatLIVE.component" \
                    "/Applications/BandChatLIVE.app" \
                    "/Library/Application Support/BandChatLIVE/Desinstalar BandChatLIVE.command"; do
             test -e "$p" && echo "ok: $p"
           done
-          for m in $MODELS; do test -s "/Library/Application Support/BandChatLIVE/modelos/$m" && echo "ok: modelo $m"; done
+          for m in ${{ matrix.models }}; do test -s "/Library/Application Support/BandChatLIVE/modelos/$m" && echo "ok: modelo $m"; done
           lipo -info "/Library/Audio/Plug-Ins/VST3/BandChatLIVE.vst3/Contents/MacOS/BandChatLIVE"
           killall -9 AudioComponentRegistrar 2>/dev/null || true
           sleep 3
@@ -152,8 +133,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Instalador-macOS
-          path: BandChatLIVE-*-macOS.pkg
+          name: Instalador-macOS-${{ matrix.label }}
+          path: BandChatLIVE-*-macOS-*.pkg
 
   # ---------------------------------------------------------------------------
   windows:
@@ -251,7 +232,7 @@ jobs:
     # push na main (ou tag v*) com tudo passando: cria/atualiza a Release da
     # versão escrita em VERSAO. Versão nova = mudar o VERSAO.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [ macos-pkg, windows, linux ]
+    needs: [ macos, windows, linux ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -260,7 +241,9 @@ jobs:
       - name: Versão
         run: echo "VERSION=$(tr -d '[:space:]' < VERSAO)" >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
-        with: { name: Instalador-macOS, path: dist }
+        with: { name: Instalador-macOS-AppleSilicon, path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: Instalador-macOS-Intel, path: dist }
       - uses: actions/download-artifact@v4
         with: { name: Instalador-Windows, path: dist }
       - uses: softprops/action-gh-release@v2
@@ -272,7 +255,8 @@ jobs:
           overwrite_files: true
           files: dist/*
           body: |
-            **macOS** (Apple Silicon e Intel, macOS 11+): baixe o `.pkg` e dê dois cliques.
+            **Mac com Apple Silicon** (M1, M2, M3, M4...): baixe o `macOS-AppleSilicon.pkg`.
+            **Mac Intel**: baixe o `macOS-Intel.pkg`. (Não sabe? Menu  › Sobre Este Mac: "Chip Apple" ou "Processador Intel".)
             **Windows** (10/11, 64 bits): baixe o `Setup.exe` e dê dois cliques.
 
             Instala os plugins VST3 e AU (Mac), o app sem DAW e os modelos de voz Rápido e Equilibrado.
