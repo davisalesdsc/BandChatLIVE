@@ -112,6 +112,7 @@ static void segmentTests (const std::vector<float>& audio, const char* modelPath
         if (vad) vad->reset();
         std::vector<Segmenter::Event> ev;
         int transcribed = 0;
+        double timeNormal = 0, timeEco = 0;
         juce::String allText;
         const int frames = (int) audio.size() / Segmenter::kFrame;
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
@@ -140,7 +141,21 @@ static void segmentTests (const std::vector<float>& audio, const char* modelPath
                 const double secs = (juce::Time::getMillisecondCounterHiRes() - t0w) / 1000.0;
                 std::cout << "  -> \"" << txt.toRawUTF8() << "\"  (" << juce::String (secs, 1) << " s"
                           << (session->usesGpu() ? ", GPU" : ", CPU") << ")";
-                if (useVad) { transcribed += txt.isNotEmpty() ? 1 : 0; allText << txt << " "; }
+                if (useVad)
+                {
+                    transcribed += txt.isNotEmpty() ? 1 : 0;
+                    allText << txt << " ";
+                    // mesmo trecho no modo econômico (janela do encoder do tamanho
+                    // da frase): quanto acelera e quanto o texto muda
+                    whisper::Session::Options eco;
+                    eco.economic = true;
+                    const auto t0e = juce::Time::getMillisecondCounterHiRes();
+                    const auto txtEco = text::clean (session->transcribe (e.audio, eco));
+                    const double secsEco = (juce::Time::getMillisecondCounterHiRes() - t0e) / 1000.0;
+                    std::cout << "\n        econômico -> \"" << txtEco.toRawUTF8() << "\"  ("
+                              << juce::String (secsEco, 1) << " s)";
+                    timeNormal += secs; timeEco += secsEco;
+                }
             }
             std::cout << "\n";
         }
@@ -151,9 +166,11 @@ static void segmentTests (const std::vector<float>& audio, const char* modelPath
             check (transcribed >= 3, "Whisper transcreveu " + juce::String (transcribed) + " de 4 falas");
             const auto f = text::fold (allText);
             int hits = 0;
-            for (auto* w : { "retorno", "fone", "violao", "monitor", "frase", "segundos", "show" })
+            for (auto* w : { "aumenta", "pouco", "favor", "testar", "sistema", "cantor", "noite" })
                 hits += f.contains (w) ? 1 : 0;
-            check (hits >= 2, u8 ("palavras reconhecidas: ") + juce::String (hits) + " de 7");
+            check (hits >= 3, u8 ("palavras reconhecidas: ") + juce::String (hits) + " de 7");
+            std::cout << u8 ("   tempo total: normal ").toRawUTF8() << juce::String (timeNormal, 1)
+                      << u8 (" s | econômico ").toRawUTF8() << juce::String (timeEco, 1) << " s\n";
         }
         if (useVad)
         {
