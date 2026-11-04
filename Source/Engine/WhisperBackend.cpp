@@ -3,7 +3,9 @@
 
 #include <BinaryData.h>
 #include <whisper.h>
+#include <ggml-backend.h>
 
+#include <atomic>
 #include <cmath>
 #include <map>
 #include <mutex>
@@ -14,8 +16,49 @@ namespace tav::whisper
 //==============================================================================
 static void logCallback (ggml_log_level level, const char* text, void*)
 {
-    if (level == GGML_LOG_LEVEL_ERROR || level == GGML_LOG_LEVEL_WARN)
-        debugLog ("whisper", juce::String::fromUTF8 (text).trimEnd());
+    if (level != GGML_LOG_LEVEL_ERROR && level != GGML_LOG_LEVEL_WARN)
+        return;
+
+    // Uma falha de GPU já gerou milhares de linhas (o erro de compilação do
+    // Metal inteiro) e encheu 3 MB de log. Só a 1ª linha de cada mensagem, até
+    // 300 caracteres, e no máximo 60 mensagens do whisper por sessão.
+    static std::atomic<int> count { 0 };
+    const int n = ++count;
+    if (n > 60)
+    {
+        if (n == 61) debugLog ("whisper", "(mais mensagens do whisper omitidas)");
+        return;
+    }
+    auto msg = juce::String::fromUTF8 (text).trim().upToFirstOccurrenceOf ("\n", false, false);
+    if (msg.length() > 300) msg = msg.substring (0, 300) + "...";
+    debugLog ("whisper", msg);
+}
+
+/** A GPU funciona de verdade? Liga o backend num teste isolado, uma vez por
+    processo. Sem isto, uma GPU que recusa o código do ggml deixava o modelo
+    meio preso a ela e o ggml abortava o programa inteiro (o DAW fechava). */
+static bool gpuUsable()
+{
+    static const bool ok = []
+    {
+        for (size_t i = 0; i < ggml_backend_dev_count(); ++i)
+        {
+            auto* dev = ggml_backend_dev_get (i);
+            const auto type = ggml_backend_dev_type (dev);
+            if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU)
+                continue;
+            if (auto* backend = ggml_backend_dev_init (dev, nullptr))
+            {
+                ggml_backend_free (backend);
+                debugLog ("modelo", juce::String ("GPU ok: ") + ggml_backend_dev_name (dev));
+                return true;
+            }
+            debugLog ("modelo", juce::String ("GPU recusou o motor (") + ggml_backend_dev_name (dev)
+                                  + juce::String::fromUTF8 ("): usando só o processador"));
+        }
+        return false;
+    }();
+    return ok;
 }
 
 void initLogging()
@@ -59,13 +102,8 @@ std::shared_ptr<SharedModel> acquireModel (const juce::File& file, juce::String&
     if (! file.existsAsFile()) { error = juce::String::fromUTF8 ("Arquivo de modelo não encontrado: ") + file.getFileName(); return {}; }
 
     auto cp = whisper_context_default_params();
-   #if JUCE_MAC
-    cp.use_gpu    = true;     // Metal
-    cp.flash_attn = true;
-   #else
-    cp.use_gpu    = false;
-    cp.flash_attn = false;
-   #endif
+    cp.use_gpu    = gpuUsable();     // Metal no Apple Silicon; nos outros não há GPU compilada
+    cp.flash_attn = cp.use_gpu;
 
     auto* ctx = whisper_init_from_file_with_params_no_state (file.getFullPathName().toRawUTF8(), cp);
     if (ctx == nullptr && cp.use_gpu)

@@ -54,7 +54,14 @@ set(BUILD_SHARED_LIBS      OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE            OFF CACHE BOOL "" FORCE)   # binário portátil
 
 if(APPLE)
-    set(GGML_METAL               ON  CACHE BOOL "" FORCE)   # GPU (Apple Silicon e Macs com GPU Metal)
+    # GPU (Metal) só no Apple Silicon. Em Mac Intel a GPU costuma não aceitar
+    # o código do ggml (Metal antigo) e a falha derrubava o host: lá o motor
+    # roda no processador (AVX2), que é o caminho estável.
+    if(TAV_OSX_ARCH STREQUAL "x86_64")
+        set(GGML_METAL OFF CACHE BOOL "" FORCE)
+    else()
+        set(GGML_METAL ON  CACHE BOOL "" FORCE)
+    endif()
     set(GGML_METAL_EMBED_LIBRARY ON  CACHE BOOL "" FORCE)
     # Accelerate/BLAS desligados: o backend BLAS compilado com SDK novo usa
     # símbolos do Accelerate que não existem no macOS 11/12 e derruba o host.

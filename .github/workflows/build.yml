@@ -30,11 +30,13 @@ jobs:
         run: cmake -S . -B build -G Xcode -DTAV_OSX_ARCH=${{ matrix.arch }} -DTAV_BUILD_TESTS=${{ matrix.arch == 'arm64' && 'ON' || 'OFF' }}
       - name: Compilar
         run: cmake --build build --config $BUILD_TYPE --target BandChatLIVE_VST3 BandChatLIVE_AU BandChatLIVE_Standalone -- -quiet
-      - name: Testes do motor (arm64)
+      - name: Testes do motor + Whisper de verdade (arm64, GPU se houver)
         if: matrix.arch == 'arm64'
         run: |
           cmake --build build --config $BUILD_TYPE --target TavTests -- -quiet
-          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav
+          bash installer/baixar-modelos.sh modelos ggml-base-q5_1.bin
+          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav modelos/ggml-base-q5_1.bin
+          echo "--- log do motor"; cat ~/Library/Application\ Support/BandChatLIVE/transcritor.log 2>/dev/null | tail -20 || true
       - name: Guardar fatia
         run: |
           mkdir -p slice
@@ -235,8 +237,10 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAV_BUILD_TESTS=ON
           cmake --build build
-      - name: Testes do motor
-        run: ./build/TavTests_artefacts/Release/TavTests tests/audio/teste.wav
+      - name: Testes do motor + Whisper de verdade (CPU)
+        run: |
+          bash installer/baixar-modelos.sh modelos ggml-base-q5_1.bin
+          ./build/TavTests_artefacts/Release/TavTests tests/audio/teste.wav modelos/ggml-base-q5_1.bin
       - name: Host de teste (VST3, modo demo)
         run: |
           export DISPLAY=:99; Xvfb :99 -screen 0 1280x900x24 & sleep 1

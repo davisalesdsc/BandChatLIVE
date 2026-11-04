@@ -19,6 +19,7 @@ static void check (bool ok, const juce::String& what)
     std::cout << (ok ? "  ok   " : "  FALHOU ") << what.toRawUTF8() << "\n";
     if (! ok) ++failures;
 }
+static void check (bool ok, const char* what) { check (ok, juce::String::fromUTF8 (what)); }
 
 static juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 
@@ -110,6 +111,8 @@ static void segmentTests (const std::vector<float>& audio, const char* modelPath
         Segmenter seg (st);
         if (vad) vad->reset();
         std::vector<Segmenter::Event> ev;
+        int transcribed = 0;
+        juce::String allText;
         const int frames = (int) audio.size() / Segmenter::kFrame;
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
         for (int i = 0; i < frames; i += 4)    // em lotes de 4 quadros, como no plugin
@@ -131,8 +134,26 @@ static void segmentTests (const std::vector<float>& audio, const char* modelPath
             std::cout << "   " << juce::String ((double) e.startSample / 16000.0, 2) << " s  "
                       << (e.audio.empty() ? juce::String ("(descartada)") : juce::String ((double) e.audio.size() / 16000.0, 1) + " s de fala");
             if (session != nullptr && ! e.audio.empty())
-                std::cout << "  -> " << text::clean (session->transcribe (e.audio, {})).toStdString();
+            {
+                const auto t0w = juce::Time::getMillisecondCounterHiRes();
+                const auto txt = text::clean (session->transcribe (e.audio, {}));
+                const double secs = (juce::Time::getMillisecondCounterHiRes() - t0w) / 1000.0;
+                std::cout << "  -> \"" << txt.toRawUTF8() << "\"  (" << juce::String (secs, 1) << " s"
+                          << (session->usesGpu() ? ", GPU" : ", CPU") << ")";
+                if (useVad) { transcribed += txt.isNotEmpty() ? 1 : 0; allText << txt << " "; }
+            }
             std::cout << "\n";
+        }
+        if (session != nullptr && useVad)
+        {
+            // voz sintética (espeak) e modelo pequeno: não dá para exigir o texto
+            // exato, mas as falas têm de virar texto e algumas palavras têm de bater
+            check (transcribed >= 3, "Whisper transcreveu " + juce::String (transcribed) + " de 4 falas");
+            const auto f = text::fold (allText);
+            int hits = 0;
+            for (auto* w : { "retorno", "fone", "violao", "monitor", "frase", "segundos", "show" })
+                hits += f.contains (w) ? 1 : 0;
+            check (hits >= 2, u8 ("palavras reconhecidas: ") + juce::String (hits) + " de 7");
         }
         if (useVad)
         {
