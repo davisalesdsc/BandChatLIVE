@@ -43,6 +43,7 @@ namespace whisper
             juce::String initialPrompt;
             int  threads = 4;
             bool economic = false;   // janela do encoder menor: mais rápido, erra mais
+            int  audioCtxFloor = 768;// piso da janela no modo econômico (1500 = 30 s)
         };
 
         static std::unique_ptr<Session> create (const juce::File& modelFile, juce::String& error);

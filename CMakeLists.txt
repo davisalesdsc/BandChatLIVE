@@ -197,6 +197,15 @@ if(TAV_BUILD_TESTS)
         juce::juce_audio_formats juce::juce_events
         PUBLIC juce::juce_recommended_config_flags)
 
+    # benchmark: modelos x threads x janela do encoder (escolha dos padrões)
+    juce_add_console_app(TavBench PRODUCT_NAME "TavBench")
+    target_sources(TavBench PRIVATE tests/TavBench.cpp ${TAV_ENGINE_SOURCES})
+    target_include_directories(TavBench PRIVATE Source)
+    target_compile_definitions(TavBench PRIVATE ${TAV_DEFS})
+    target_link_libraries(TavBench PRIVATE TavData whisper
+        juce::juce_audio_formats juce::juce_events
+        PUBLIC juce::juce_recommended_config_flags)
+
     # host de teste: carrega o VST3 compilado como um DAW
     juce_add_console_app(HostTest PRODUCT_NAME "HostTest")
     target_sources(HostTest PRIVATE tests/HostTest.cpp)

@@ -104,6 +104,9 @@ std::shared_ptr<SharedModel> acquireModel (const juce::File& file, juce::String&
     auto cp = whisper_context_default_params();
     cp.use_gpu    = gpuUsable();     // Metal no Apple Silicon; nos outros não há GPU compilada
     cp.flash_attn = cp.use_gpu;
+    // TAV_FLASH=0/1 força o flash attention (só para benchmark)
+    if (const auto fa = juce::SystemStats::getEnvironmentVariable ("TAV_FLASH", {}); fa.isNotEmpty())
+        cp.flash_attn = fa == "1";
 
     auto* ctx = whisper_init_from_file_with_params_no_state (file.getFullPathName().toRawUTF8(), cp);
     if (ctx == nullptr && cp.use_gpu)
@@ -191,7 +194,7 @@ juce::String Session::transcribe (const std::vector<float>& input, const Options
     {
         // 1500 quadros = 30 s; usar só o necessário (com piso) acelera o encoder
         const int frames = (int) std::ceil ((double) audio.size() / 16000.0 * 50.0) + 64;
-        p.audio_ctx = juce::jlimit (768, 1500, frames);
+        p.audio_ctx = juce::jlimit (juce::jlimit (256, 1500, opt.audioCtxFloor), 1500, frames);
     }
 
     aborting.store (false);
