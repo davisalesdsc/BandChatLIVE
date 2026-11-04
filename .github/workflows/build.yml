@@ -1,0 +1,265 @@
+name: Build e instaladores
+
+# A cada push: compila, testa e gera os instaladores (aba Actions > Artifacts).
+# Ao criar uma tag v* (ex.: v0.2): também publica uma Release com os dois instaladores.
+on:
+  push:
+    branches: [ main ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+  # modelos que vão dentro dos instaladores (o "Mais preciso" é baixado pelo plugin)
+  MODELS: "ggml-base-q5_1.bin ggml-small-q5_1.bin"
+  MODELS_URL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # macOS: uma compilação por arquitetura (o ggml só liga NEON/AVX2 assim)
+  # ---------------------------------------------------------------------------
+  macos:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        arch: [ arm64, x86_64 ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar
+        run: cmake -S . -B build -G Xcode -DTAV_OSX_ARCH=${{ matrix.arch }} -DTAV_BUILD_TESTS=${{ matrix.arch == 'arm64' && 'ON' || 'OFF' }}
+      - name: Compilar
+        run: cmake --build build --config $BUILD_TYPE --target TranscricaoAoVivo_VST3 TranscricaoAoVivo_AU TranscricaoAoVivo_Standalone -- -quiet
+      - name: Testes do motor (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          cmake --build build --config $BUILD_TYPE --target TavTests -- -quiet
+          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav
+      - name: Guardar fatia
+        run: |
+          mkdir -p slice
+          for f in VST3/"Transcricao ao Vivo.vst3" AU/"Transcricao ao Vivo.component" Standalone/"Transcricao ao Vivo.app"; do
+            ditto "build/TranscricaoAoVivo_artefacts/$BUILD_TYPE/$f" "slice/$(basename "$f")"
+          done
+          cd slice && zip -qry ../slice.zip .     # zip preserva links e permissões dos bundles
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slice-${{ matrix.arch }}
+          path: slice.zip
+
+  # ---------------------------------------------------------------------------
+  # macOS: binário universal + assinatura + .pkg + teste de instalação
+  # ---------------------------------------------------------------------------
+  macos-pkg:
+    needs: macos
+    runs-on: macos-14
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: slice-arm64, path: dl-arm64 }
+      - uses: actions/download-artifact@v4
+        with: { name: slice-x86_64, path: dl-x86_64 }
+      - name: Juntar as fatias (lipo)
+        run: |
+          set -e
+          mkdir -p arm64 x86_64 out
+          (cd arm64 && unzip -q ../dl-arm64/slice.zip)
+          (cd x86_64 && unzip -q ../dl-x86_64/slice.zip)
+          for b in "Transcricao ao Vivo.vst3" "Transcricao ao Vivo.component" "Transcricao ao Vivo.app"; do
+            ditto "arm64/$b" "out/$b"
+            bin="Contents/MacOS/Transcricao ao Vivo"
+            lipo -create "arm64/$b/$bin" "x86_64/$b/$bin" -output "out/$b/$bin"
+            lipo -info "out/$b/$bin"
+          done
+
+      - name: Importar certificados (só se configurados)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/sign.keychain-db"; KCPASS="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KCPASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPASS" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KCPASS" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          echo "APP_IDENTITY=$(security find-identity -v -p codesigning "$KC" | grep -o '"Developer ID Application[^"]*"' | head -1 | tr -d '"')" >> $GITHUB_ENV
+          echo "MAC_INSTALLER_IDENTITY=$(security find-identity -v "$KC" | grep -o '"Developer ID Installer[^"]*"' | head -1 | tr -d '"')" >> $GITHUB_ENV
+
+      - name: Assinar os bundles
+        run: |
+          set -e
+          if [ -n "${APP_IDENTITY:-}" ]; then
+            echo "Assinando com $APP_IDENTITY (hardened runtime)"
+            for b in out/*.vst3 out/*.component; do
+              codesign --force --deep --options runtime --timestamp --sign "$APP_IDENTITY" "$b"
+            done
+            codesign --force --deep --options runtime --timestamp \
+                     --entitlements installer/macos/app.entitlements --sign "$APP_IDENTITY" out/*.app
+          else
+            echo "Sem certificado: assinatura ad-hoc (o Mac vai pedir confirmação ao abrir o instalador)"
+            for b in out/*; do codesign --force --deep --sign - "$b"; done
+          fi
+          for b in out/*; do codesign --verify --deep --strict "$b"; done
+
+      - name: Modelos de voz (cache)
+        uses: actions/cache@v4
+        with:
+          path: modelos
+          key: modelos-${{ env.MODELS }}
+      - name: Baixar modelos
+        run: bash installer/baixar-modelos.sh modelos $MODELS
+
+      - name: Montar o .pkg
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSAO)"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          bash installer/macos/build-pkg.sh out modelos "$VERSION" "TranscricaoAoVivo-$VERSION-macOS.pkg"
+
+      - name: Notarizar (só se configurado)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit "TranscricaoAoVivo-$VERSION-macOS.pkg" \
+                --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "TranscricaoAoVivo-$VERSION-macOS.pkg"
+
+      - name: Testar a instalação
+        run: |
+          set -e
+          sudo installer -pkg "TranscricaoAoVivo-$VERSION-macOS.pkg" -target /
+          for p in "/Library/Audio/Plug-Ins/VST3/Transcricao ao Vivo.vst3" \
+                   "/Library/Audio/Plug-Ins/Components/Transcricao ao Vivo.component" \
+                   "/Applications/Transcricao ao Vivo.app" \
+                   "/Library/Application Support/TranscricaoAoVivo/Desinstalar Transcricao ao Vivo.command"; do
+            test -e "$p" && echo "ok: $p"
+          done
+          for m in $MODELS; do test -s "/Library/Application Support/TranscricaoAoVivo/modelos/$m" && echo "ok: modelo $m"; done
+          lipo -info "/Library/Audio/Plug-Ins/VST3/Transcricao ao Vivo.vst3/Contents/MacOS/Transcricao ao Vivo"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -v aufx TrAV DvSl          # validação oficial da Apple, no AU já instalado
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Instalador-macOS
+          path: TranscricaoAoVivo-*-macOS.pkg
+
+  # ---------------------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DTAV_BUILD_TESTS=ON
+      - name: Compilar
+        run: cmake --build build --config Release --target TranscricaoAoVivo_VST3 TranscricaoAoVivo_Standalone TavTests -- /m /v:minimal
+      - name: Testes do motor
+        run: '& "build/TavTests_artefacts/Release/TavTests.exe" tests/audio/teste.wav'
+      - name: Plugin não depende do Visual C++ Redistributable
+        shell: pwsh
+        run: |
+          $dll = "build/TranscricaoAoVivo_artefacts/Release/VST3/Transcricao ao Vivo.vst3/Contents/x86_64-win/Transcricao ao Vivo.vst3"
+          $txt = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
+          if ($txt -match '(?i)(vcruntime|msvcp)1\d\d\.dll') { throw "o plugin depende de $($Matches[0])" }
+          "ok: runtime do Visual C++ embutido"
+
+      - name: Modelos de voz (cache)
+        uses: actions/cache@v4
+        with:
+          path: modelos
+          key: modelos-${{ env.MODELS }}
+      - name: Baixar modelos
+        shell: bash
+        run: bash installer/baixar-modelos.sh modelos $MODELS
+
+      - name: Montar o instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          $version = (Get-Content VERSAO -Raw).Trim()
+          "VERSION=$version" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item -Recurse "build/TranscricaoAoVivo_artefacts/Release/VST3/Transcricao ao Vivo.vst3" out/
+          Copy-Item "build/TranscricaoAoVivo_artefacts/Release/Standalone/Transcricao ao Vivo.exe" out/
+          Copy-Item README.md out/LEIA-ME.md
+          & $iscc /Q "/DAppVersion=$version" "/DSrcDir=$PWD\out" "/DModelsDir=$PWD\modelos" "/DOutDir=$PWD" installer/windows/TranscricaoAoVivo.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falhou" }
+
+      - name: Testar instalar e desinstalar
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "TranscricaoAoVivo-*-Windows-Setup.exe" | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 30; throw "instalação falhou ($($p.ExitCode))" }
+          $files = @(
+            "$env:CommonProgramFiles\VST3\Transcricao ao Vivo.vst3\Contents\x86_64-win\Transcricao ao Vivo.vst3",
+            "$env:ProgramFiles\Transcricao ao Vivo\Transcricao ao Vivo.exe",
+            "$env:ProgramData\TranscricaoAoVivo\modelos\ggml-base-q5_1.bin",
+            "$env:ProgramData\TranscricaoAoVivo\modelos\ggml-small-q5_1.bin")
+          foreach ($f in $files) { if (-not (Test-Path $f)) { throw "faltando: $f" }; "ok: $f" }
+          Start-Process "$env:ProgramFiles\Transcricao ao Vivo\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          for ($i = 0; $i -lt 30 -and (Test-Path $files[0]); $i++) { Start-Sleep 1 }
+          if (Test-Path $files[0]) { throw "a desinstalação deixou o plugin para trás" }
+          "ok: desinstalado"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Instalador-Windows
+          path: TranscricaoAoVivo-*-Windows-Setup.exe
+
+  # ---------------------------------------------------------------------------
+  # Linux: carrega o VST3 num host de teste (estado, várias instâncias, fluxo)
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Textos com acento convertidos de UTF-8
+        run: python3 tests/checar-acentos.py Source
+      - name: Dependências
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev xvfb
+      - name: Compilar
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAV_BUILD_TESTS=ON
+          cmake --build build
+      - name: Testes do motor
+        run: ./build/TavTests_artefacts/Release/TavTests tests/audio/teste.wav
+      - name: Host de teste (VST3, modo demo)
+        run: |
+          export DISPLAY=:99; Xvfb :99 -screen 0 1280x900x24 & sleep 1
+          TAV_DEMO=1 ./build/HostTest_artefacts/Release/HostTest "build/TranscricaoAoVivo_artefacts/Release/VST3/Transcricao ao Vivo.vst3" tests/audio/teste.wav
+
+  # ---------------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ macos-pkg, windows, linux ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: Instalador-macOS, path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: Instalador-Windows, path: dist }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          name: Transcrição ao Vivo ${{ github.ref_name }}
+          body: |
+            **macOS** (Apple Silicon e Intel, macOS 11+): baixe o `.pkg` e dê dois cliques.
+            **Windows** (10/11, 64 bits): baixe o `Setup.exe` e dê dois cliques.
+
+            Instala os plugins VST3 e AU (Mac), o app sem DAW e os modelos de voz Rápido e Equilibrado.
