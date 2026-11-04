@@ -12,7 +12,7 @@ on:
 env:
   BUILD_TYPE: Release
   # modelos que vão dentro do instalador do Windows (no Mac: por arquitetura, abaixo)
-  MODELS: "ggml-base-q5_1.bin ggml-small-q5_1.bin"
+  MODELS: "ggml-base-q8_0.bin ggml-small-q5_1.bin"
   MODELS_URL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
           - arch: x86_64
             runner: macos-15-intel
             label: Intel
-            models: "ggml-base-q5_1.bin"
+            models: "ggml-base-q8_0.bin"
     runs-on: ${{ matrix.runner }}
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
@@ -54,7 +54,7 @@ jobs:
         run: bash installer/baixar-modelos.sh modelos ${{ matrix.models }}
       - name: Testes do motor + Whisper de verdade
         run: |
-          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav modelos/ggml-base-q5_1.bin
+          ./build/TavTests_artefacts/$BUILD_TYPE/TavTests tests/audio/teste.wav "modelos/$(echo '${{ matrix.models }}' | cut -d' ' -f1)"
           echo "--- log do motor"; tail -20 ~/Library/Application\ Support/BandChatLIVE/transcritor.log 2>/dev/null || true
 
       - name: Juntar os bundles
@@ -187,8 +187,7 @@ jobs:
           $files = @(
             "$env:CommonProgramFiles\VST3\BandChatLIVE.vst3\Contents\x86_64-win\BandChatLIVE.vst3",
             "$env:ProgramFiles\BandChatLIVE\BandChatLIVE.exe",
-            "$env:ProgramData\BandChatLIVE\modelos\ggml-base-q5_1.bin",
-            "$env:ProgramData\BandChatLIVE\modelos\ggml-small-q5_1.bin")
+            "$env:ProgramData\BandChatLIVE\modelos\ggml-base-q8_0.bin")
           foreach ($f in $files) { if (-not (Test-Path $f)) { throw "faltando: $f" }; "ok: $f" }
           Start-Process "$env:ProgramFiles\BandChatLIVE\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
           for ($i = 0; $i -lt 30 -and (Test-Path $files[0]); $i++) { Start-Sleep 1 }
@@ -220,8 +219,8 @@ jobs:
           cmake --build build
       - name: Testes do motor + Whisper de verdade (CPU)
         run: |
-          bash installer/baixar-modelos.sh modelos ggml-base-q5_1.bin
-          ./build/TavTests_artefacts/Release/TavTests tests/audio/teste.wav modelos/ggml-base-q5_1.bin
+          bash installer/baixar-modelos.sh modelos ggml-base-q8_0.bin
+          ./build/TavTests_artefacts/Release/TavTests tests/audio/teste.wav modelos/ggml-base-q8_0.bin
       - name: Host de teste (VST3, modo demo)
         run: |
           export DISPLAY=:99; Xvfb :99 -screen 0 1280x900x24 & sleep 1

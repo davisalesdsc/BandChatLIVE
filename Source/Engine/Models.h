@@ -22,6 +22,12 @@ juce::File logsDir();
 /** Modelos Whisper (ggml-*.bin) da pasta, do mais leve para o mais pesado. */
 juce::Array<juce::File> installed();
 
+/** Mac com chip Apple (GPU Metal). Nos outros o motor roda só na CPU. */
+bool isAppleSilicon();
+
+/** Parciais ligados por padrão só onde há folga (GPU ou CPU de 4+ núcleos). */
+bool partialsByDefault();
+
 /** 0 = tiny ... 5 = large; 99 = desconhecido. */
 int weight (const juce::File& f);
 

@@ -16,7 +16,9 @@
 #endif
 
 #define Plugin "BandChatLIVE"
-#define HasRapido FileExists(ModelsDir + "\ggml-base-q5_1.bin")
+; Rápido: q8_0 (mais rápido em processador Intel/AMD que o q5_1, ver benchmark)
+#define RapidoFile "ggml-base-q8_0.bin"
+#define HasRapido FileExists(ModelsDir + "\" + RapidoFile)
 #define HasEquilibrado FileExists(ModelsDir + "\ggml-small-q5_1.bin")
 
 [Setup]
@@ -59,7 +61,7 @@ Name: "modelos"; Description: "Modelos de voz (funcionam offline desde o primeir
 Name: "modelos\rapido"; Description: "Rápido: responde rápido, para computador mais fraco"; Types: completa personalizada
 #endif
 #if HasEquilibrado
-Name: "modelos\equilibrado"; Description: "Equilibrado: reconhece melhor, serve na maioria dos PCs"; Types: completa personalizada
+Name: "modelos\equilibrado"; Description: "Equilibrado: reconhece melhor, mas precisa de PC forte (8+ núcleos)"; Types: personalizada
 #endif
 
 [Tasks]
@@ -74,7 +76,7 @@ Source: "{#SrcDir}\{#Plugin}.vst3\*"; DestDir: "{commoncf64}\VST3\{#Plugin}.vst3
 Source: "{#SrcDir}\{#Plugin}.exe"; DestDir: "{app}"; Components: app; Flags: ignoreversion
 Source: "{#SrcDir}\LEIA-ME.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 #if HasRapido
-Source: "{#ModelsDir}\ggml-base-q5_1.bin"; DestDir: "{commonappdata}\BandChatLIVE\modelos"; Components: modelos\rapido; Flags: ignoreversion
+Source: "{#ModelsDir}\{#RapidoFile}"; DestDir: "{commonappdata}\BandChatLIVE\modelos"; Components: modelos\rapido; Flags: ignoreversion
 #endif
 #if HasEquilibrado
 Source: "{#ModelsDir}\ggml-small-q5_1.bin"; DestDir: "{commonappdata}\BandChatLIVE\modelos"; Components: modelos\equilibrado; Flags: ignoreversion

@@ -53,14 +53,22 @@ namespace
         return nullptr;
     }
 
-    bool isAppleSilicon()
-    {
-       #if JUCE_MAC && JUCE_ARM
-        return true;
-       #else
-        return false;
-       #endif
-    }
+}
+
+bool isAppleSilicon()
+{
+   #if JUCE_MAC && JUCE_ARM
+    return true;
+   #else
+    return false;
+   #endif
+}
+
+bool partialsByDefault()
+{
+    // cada parcial repete o trabalho todo do Whisper: em CPU de 2 núcleos
+    // (ex.: Mac mini 2014) eles atrasavam as frases finais
+    return isAppleSilicon() || juce::SystemStats::getNumPhysicalCpus() >= 4;
 }
 
 int weight (const juce::File& f)
@@ -118,11 +126,12 @@ juce::File choose (Mode mode)
 
     if (mode == Mode::precise) return heaviest;
 
-    // automático: Apple Silicon (com GPU) aguenta o mais pesado. Nos outros,
-    // até "Equilibrado"; com menos de 4 núcleos (ex.: Mac mini 2014, i7 de 2
-    // núcleos) só até "Rápido", senão as primeiras frases já saem atrasadas.
+    // automático: Apple Silicon (com GPU) aguenta o mais pesado.
+    // Sem GPU, medido (benchmark, CPU de 2 núcleos/4 threads): "Equilibrado"
+    // leva ~3,3 s por fala, lento demais ao vivo; "Rápido" ~0,6 s. Só CPU
+    // grande (8+ núcleos) começa no Equilibrado.
     if (isAppleSilicon()) return heaviest;
-    const int maxWeight = juce::SystemStats::getNumPhysicalCpus() < 4 ? 1 : 2;
+    const int maxWeight = juce::SystemStats::getNumPhysicalCpus() >= 8 ? 2 : 1;
     juce::File best;
     for (auto& f : list)
         if (weight (f) <= maxWeight) best = f;
@@ -141,13 +150,20 @@ juce::File lighterThan (const juce::File& current)
 const Download* catalogue (int& count)
 {
     // versões quantizadas: quase a mesma precisão em uma fração do tamanho
-    static const Download d[] = {
+    // Apple Silicon (GPU): q5 é o melhor custo. Só CPU (Intel/AMD): q8_0 é
+    // ~25% mais rápido que q5_1 (benchmark) e o "Mais preciso" não acompanha.
+    static const Download gpu[] = {
         { "ggml-base-q5_1.bin",           "R\xc3\xa1pido",     "60 MB"  },
         { "ggml-small-q5_1.bin",          "Equilibrado",       "190 MB" },
         { "ggml-large-v3-turbo-q5_0.bin", "Mais preciso",      "550 MB" },
     };
-    count = (int) juce::numElementsInArray (d);
-    return d;
+    static const Download cpu[] = {
+        { "ggml-base-q8_0.bin",           "R\xc3\xa1pido",     "80 MB"  },
+        { "ggml-small-q5_1.bin",          "Equilibrado",       "190 MB" },
+    };
+    if (isAppleSilicon()) { count = (int) juce::numElementsInArray (gpu); return gpu; }
+    count = (int) juce::numElementsInArray (cpu);
+    return cpu;
 }
 
 juce::URL urlFor (const Download& d)

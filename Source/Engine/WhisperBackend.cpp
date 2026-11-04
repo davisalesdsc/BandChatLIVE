@@ -103,7 +103,7 @@ std::shared_ptr<SharedModel> acquireModel (const juce::File& file, juce::String&
 
     auto cp = whisper_context_default_params();
     cp.use_gpu    = gpuUsable();     // Metal no Apple Silicon; nos outros não há GPU compilada
-    cp.flash_attn = cp.use_gpu;
+    cp.flash_attn = true;            // também na CPU: 15-25% mais rápido (benchmark)
     // TAV_FLASH=0/1 força o flash attention (só para benchmark)
     if (const auto fa = juce::SystemStats::getEnvironmentVariable ("TAV_FLASH", {}); fa.isNotEmpty())
         cp.flash_attn = fa == "1";

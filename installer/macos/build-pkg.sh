@@ -135,7 +135,9 @@ add_model () {   # <arquivo> <id> <titulo> <descricao> <marcado:true|false>
   MODEL_REFS+="  <pkg-ref id=\"$ID.modelo.$id\" version=\"$VERSION\" onConclusion=\"none\">modelo-$id.pkg</pkg-ref>"$'\n'
   echo "  componente: modelo-$id.pkg ($file, $mb MB)"
 }
-add_model ggml-base-q5_1.bin  rapido      "Modelo Rápido"      "Responde rápido, também em Mac mais antigo." true
+# Rápido: q8_0 no Intel (mais rápido em CPU, ver benchmark), q5_1 no Apple Silicon
+if [ -n "$MODELS" ] && [ -f "$MODELS/ggml-base-q8_0.bin" ]; then RAPIDO=ggml-base-q8_0.bin; else RAPIDO=ggml-base-q5_1.bin; fi
+add_model "$RAPIDO"           rapido      "Modelo Rápido"      "Responde rápido, também em Mac mais antigo." true
 add_model ggml-small-q5_1.bin equilibrado "Modelo Equilibrado" "Reconhece melhor; precisa de um Mac mais forte." true
 
 MODELS_OUTLINE=""

@@ -9,7 +9,10 @@ O áudio passa **intacto** pelo plugin: ele só escuta.
 
 ## Instalar
 
-**macOS** (Apple Silicon ou Intel, macOS 11+): dê dois cliques em `BandChatLIVE-x.y-macOS.pkg`.
+**Mac com Apple Silicon** (M1, M2, M3, M4…): dê dois cliques em `BandChatLIVE-x.y-macOS-AppleSilicon.pkg`.
+**Mac Intel**: dê dois cliques em `BandChatLIVE-x.y-macOS-Intel.pkg`.
+(Não sabe qual é o seu? Menu  › Sobre Este Mac: "Chip Apple" ou "Processador Intel". Se baixar o errado, o
+instalador avisa.)
 **Windows** (10/11, 64 bits): dê dois cliques em `BandChatLIVE-x.y-Windows-Setup.exe`.
 
 O instalador coloca tudo no lugar certo. Em *Personalizar* dá para escolher:
@@ -19,7 +22,7 @@ O instalador coloca tudo no lugar certo. Em *Personalizar* dá para escolher:
 | Plugin VST3 (REAPER, Ableton, Cubase, Studio One, SuperRack, Live Professor...) | sim | sim |
 | Plugin AU (Logic, MainStage, GarageBand) | sim | não existe AU no Windows |
 | App sem DAW (usa o microfone direto) | sim | sim |
-| Modelos de voz Rápido e Equilibrado (funciona offline desde o primeiro uso) | sim | sim |
+| Modelos de voz (funciona offline desde o primeiro uso) | Apple Silicon: Rápido e Equilibrado · Intel: Rápido | Rápido (Equilibrado opcional) |
 
 Depois peça ao seu programa para **procurar plugins de novo** (REAPER: Options > Preferences >
 Plug-ins > VST > Re-scan; Logic: basta reabrir).
@@ -68,6 +71,13 @@ Se o computador não acompanhar a fala, o plugin primeiro desliga os parciais, d
 para um modelo mais leve (no modo Automático) e, por último, entra no modo econômico. O aviso
 aparece na tela.
 
+## Mac Intel e PCs sem placa de vídeo
+
+Sem GPU, o Whisper roda no processador. Para ficar fluido, o plugin ajusta sozinho:
+modelo Rápido otimizado para Intel/AMD, janela de áudio do tamanho da frase, todas as threads do
+processador e, em processador de 2 núcleos, sem texto parcial. Medido numa CPU de 2 núcleos/4
+threads: cerca de 0,6 s por frase (antes 2,1 s). O modelo Equilibrado fica para PCs com 8+ núcleos.
+
 ## Limitação
 
 O detector de voz rejeita instrumento, batida, palmas e ruído, mas **canto é voz**: com a
@@ -110,6 +120,7 @@ installer/
   baixar-modelos.sh        modelos que vão dentro dos instaladores
 tests/
   TavTests.cpp             motor: texto, VAD determinístico, segmentação (Whisper opcional)
+  TavBench.cpp             benchmark: modelos x threads x janela (workflow bench.yml)
   HostTest.cpp             carrega o VST3 como um DAW: taxas/blocos, estado, 4 instâncias, fluxo
   checar-acentos.py        textos com acento sempre convertidos de UTF-8
   audio/teste.wav          falas + trecho de instrumento + fala longa
@@ -129,9 +140,9 @@ sem modelo.
 ### Gerar os instaladores
 
 O GitHub Actions (`.github/workflows/build.yml`) faz tudo a cada push na `main`:
-compila macOS (arm64 e x86_64 juntados num binário universal), Windows e Linux; monta o `.pkg` e o
-`Setup.exe`; **instala de verdade** nos dois sistemas e confere (no Mac roda o `auval` da Apple no AU
-instalado). Os instaladores também ficam na aba **Actions**, em *Artifacts*.
+compila e testa (com o Whisper de verdade) no Mac Apple Silicon, num Mac Intel, no Windows e no
+Linux; monta um `.pkg` para cada tipo de Mac e o `Setup.exe`; **instala de verdade** e confere (no
+Mac roda o `auval` da Apple no AU instalado). Os instaladores também ficam na aba **Actions**, em *Artifacts*.
 
 Com tudo passando, o CI também publica os dois instaladores em **Releases**, na versão escrita em
 `VERSAO` (a Release é atualizada a cada push). Para lançar uma versão nova, basta mudar o `VERSAO`.

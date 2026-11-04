@@ -51,7 +51,7 @@ APVTS::ParameterLayout TranscricaoProcessor::createLayout()
               NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { ids::hold, 1 }, "Fim de frase",
               NormalisableRange<float> (300.0f, 2000.0f, 10.0f), 700.0f, AudioParameterFloatAttributes().withLabel ("ms")));
-    l.add (std::make_unique<AudioParameterBool>  (ParameterID { ids::partials, 1 }, "Parciais", true));
+    l.add (std::make_unique<AudioParameterBool>  (ParameterID { ids::partials, 1 }, "Parciais", tav::models::partialsByDefault()));
     return l;
 }
 

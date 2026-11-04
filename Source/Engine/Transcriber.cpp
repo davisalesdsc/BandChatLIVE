@@ -254,6 +254,9 @@ void Transcriber::loadModel (const juce::File& f)
         return;
     }
     usingGpu.store (session->usesGpu());
+    // Sem GPU, a janela do encoder do tamanho da frase (piso ~15 s) já desde o
+    // início: medido 2-3x mais rápido com texto praticamente igual (benchmark).
+    economic = ! session->usesGpu();
     debugLog ("modelo", f.getFileName() + " pronto em "
               + juce::String ((juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0, 1) + " s");
     state.store (State::listening);
@@ -329,7 +332,7 @@ void Transcriber::process (Job& job, int newerFinalsWaiting)
 
     whisper::Session::Options opt;
     opt.language = s.language;
-    opt.threads  = juce::jlimit (1, 8, juce::SystemStats::getNumPhysicalCpus());
+    opt.threads  = juce::jlimit (1, 8, juce::SystemStats::getNumCpus());   // threads lógicas: ~5-10% melhor (benchmark)
     opt.economic = economic;
     if (s.vocabulary.trim().isNotEmpty())
         opt.initialPrompt = u8 ("Conversa de palco entre músicos e técnico de som. Termos: ") + s.vocabulary.trim() + ".";
