@@ -1,4 +1,4 @@
-# Transcrição ao Vivo: plugin VST3 / AU / app
+# BandChatLIVE: plugin VST3 / AU / app
 
 Você fala no microfone e o texto aparece na tela, com horário, em tempo real e **100% offline**.
 O plugin funciona em qualquer programa que aceite VST3 ou AU (REAPER, Ableton Live, Logic,
@@ -9,8 +9,8 @@ O áudio passa **intacto** pelo plugin: ele só escuta.
 
 ## Instalar
 
-**macOS** (Apple Silicon ou Intel, macOS 11+): dê dois cliques em `TranscricaoAoVivo-x.y-macOS.pkg`.
-**Windows** (10/11, 64 bits): dê dois cliques em `TranscricaoAoVivo-x.y-Windows-Setup.exe`.
+**macOS** (Apple Silicon ou Intel, macOS 11+): dê dois cliques em `BandChatLIVE-x.y-macOS.pkg`.
+**Windows** (10/11, 64 bits): dê dois cliques em `BandChatLIVE-x.y-Windows-Setup.exe`.
 
 O instalador coloca tudo no lugar certo. Em *Personalizar* dá para escolher:
 
@@ -33,8 +33,8 @@ Plug-ins > VST > Re-scan; Logic: basta reabrir).
 > - Windows: se aparecer "O Windows protegeu o computador", clique em **Mais informações** >
 >   **Executar assim mesmo**.
 
-**Desinstalar:** no Mac, dê dois cliques em *Desinstalar Transcricao ao Vivo* na pasta
-`/Library/Application Support/TranscricaoAoVivo`. No Windows, use Configurações > Aplicativos.
+**Desinstalar:** no Mac, dê dois cliques em *Desinstalar BandChatLIVE* na pasta
+`/Library/Application Support/BandChatLIVE`. No Windows, use Configurações > Aplicativos.
 
 ## O que tem na tela
 
@@ -78,10 +78,10 @@ automação/MIDI/snapshot) para pausar durante as músicas.
 
 | | macOS | Windows |
 |---|---|---|
-| Modelos do instalador | `/Library/Application Support/TranscricaoAoVivo/modelos/` | `C:\ProgramData\TranscricaoAoVivo\modelos\` |
-| Modelos baixados no plugin | `~/Library/Application Support/TranscricaoAoVivo/modelos/` | `%APPDATA%\TranscricaoAoVivo\modelos\` |
-| Histórico | `.../TranscricaoAoVivo/Logs/transcricao_AAAA-MM-DD.txt` | idem |
-| Log técnico | `.../TranscricaoAoVivo/transcritor.log` | idem |
+| Modelos do instalador | `/Library/Application Support/BandChatLIVE/modelos/` | `C:\ProgramData\BandChatLIVE\modelos\` |
+| Modelos baixados no plugin | `~/Library/Application Support/BandChatLIVE/modelos/` | `%APPDATA%\BandChatLIVE\modelos\` |
+| Histórico | `.../BandChatLIVE/Logs/transcricao_AAAA-MM-DD.txt` | idem |
+| Log técnico | `.../BandChatLIVE/transcritor.log` | idem |
 
 Também dá para colocar à mão qualquer modelo `ggml-*.bin` do whisper.cpp na pasta de modelos.
 

@@ -162,7 +162,7 @@ int main (int argc, char* argv[])
         auto audio = readWav48kStereo (juce::File (juce::String::fromUTF8 (argv[2])));
         check (audio.getNumSamples() > 0, "WAV lido (" + juce::String (audio.getNumSamples() / 48000.0, 1) + " s)");
         auto logs = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                        .getChildFile ("TranscricaoAoVivo/Logs");
+                        .getChildFile ("BandChatLIVE/Logs");
         auto today = logs.getChildFile (juce::Time::getCurrentTime().formatted ("transcricao_%Y-%m-%d.txt"));
         const auto before = today.loadFileAsString();
 

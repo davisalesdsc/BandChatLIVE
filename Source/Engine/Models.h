@@ -8,14 +8,14 @@ namespace tav::models
 {
 
 /** Pasta de dados do produto:
-      macOS   ~/Library/Application Support/TranscricaoAoVivo
-      Windows %APPDATA%\TranscricaoAoVivo
-      Linux   ~/.config/TranscricaoAoVivo                                     */
+      macOS   ~/Library/Application Support/BandChatLIVE
+      Windows %APPDATA%\BandChatLIVE
+      Linux   ~/.config/BandChatLIVE                                     */
 juce::File dataDir();
 juce::File modelsDir();
 /** Modelos instalados pelo instalador, para todos os usuários:
-      macOS   /Library/Application Support/TranscricaoAoVivo/modelos
-      Windows C:\ProgramData\TranscricaoAoVivo\modelos                         */
+      macOS   /Library/Application Support/BandChatLIVE/modelos
+      Windows C:\ProgramData\BandChatLIVE\modelos                         */
 juce::File systemModelsDir();
 juce::File logsDir();
 

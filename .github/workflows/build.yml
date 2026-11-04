@@ -29,7 +29,7 @@ jobs:
       - name: Configurar
         run: cmake -S . -B build -G Xcode -DTAV_OSX_ARCH=${{ matrix.arch }} -DTAV_BUILD_TESTS=${{ matrix.arch == 'arm64' && 'ON' || 'OFF' }}
       - name: Compilar
-        run: cmake --build build --config $BUILD_TYPE --target TranscricaoAoVivo_VST3 TranscricaoAoVivo_AU TranscricaoAoVivo_Standalone -- -quiet
+        run: cmake --build build --config $BUILD_TYPE --target BandChatLIVE_VST3 BandChatLIVE_AU BandChatLIVE_Standalone -- -quiet
       - name: Testes do motor (arm64)
         if: matrix.arch == 'arm64'
         run: |
@@ -38,8 +38,8 @@ jobs:
       - name: Guardar fatia
         run: |
           mkdir -p slice
-          for f in VST3/"Transcricao ao Vivo.vst3" AU/"Transcricao ao Vivo.component" Standalone/"Transcricao ao Vivo.app"; do
-            ditto "build/TranscricaoAoVivo_artefacts/$BUILD_TYPE/$f" "slice/$(basename "$f")"
+          for f in VST3/"BandChatLIVE.vst3" AU/"BandChatLIVE.component" Standalone/"BandChatLIVE.app"; do
+            ditto "build/BandChatLIVE_artefacts/$BUILD_TYPE/$f" "slice/$(basename "$f")"
           done
           cd slice && zip -qry ../slice.zip .     # zip preserva links e permissões dos bundles
       - uses: actions/upload-artifact@v4
@@ -67,9 +67,9 @@ jobs:
           mkdir -p arm64 x86_64 out
           (cd arm64 && unzip -q ../dl-arm64/slice.zip)
           (cd x86_64 && unzip -q ../dl-x86_64/slice.zip)
-          for b in "Transcricao ao Vivo.vst3" "Transcricao ao Vivo.component" "Transcricao ao Vivo.app"; do
+          for b in "BandChatLIVE.vst3" "BandChatLIVE.component" "BandChatLIVE.app"; do
             ditto "arm64/$b" "out/$b"
-            bin="Contents/MacOS/Transcricao ao Vivo"
+            bin="Contents/MacOS/BandChatLIVE"
             lipo -create "arm64/$b/$bin" "x86_64/$b/$bin" -output "out/$b/$bin"
             lipo -info "out/$b/$bin"
           done
@@ -119,7 +119,7 @@ jobs:
         run: |
           VERSION="$(tr -d '[:space:]' < VERSAO)"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          bash installer/macos/build-pkg.sh out modelos "$VERSION" "TranscricaoAoVivo-$VERSION-macOS.pkg"
+          bash installer/macos/build-pkg.sh out modelos "$VERSION" "BandChatLIVE-$VERSION-macOS.pkg"
 
       - name: Notarizar (só se configurado)
         if: env.HAS_SIGNING == 'true'
@@ -128,30 +128,30 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          xcrun notarytool submit "TranscricaoAoVivo-$VERSION-macOS.pkg" \
+          xcrun notarytool submit "BandChatLIVE-$VERSION-macOS.pkg" \
                 --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-          xcrun stapler staple "TranscricaoAoVivo-$VERSION-macOS.pkg"
+          xcrun stapler staple "BandChatLIVE-$VERSION-macOS.pkg"
 
       - name: Testar a instalação
         run: |
           set -e
-          sudo installer -pkg "TranscricaoAoVivo-$VERSION-macOS.pkg" -target /
-          for p in "/Library/Audio/Plug-Ins/VST3/Transcricao ao Vivo.vst3" \
-                   "/Library/Audio/Plug-Ins/Components/Transcricao ao Vivo.component" \
-                   "/Applications/Transcricao ao Vivo.app" \
-                   "/Library/Application Support/TranscricaoAoVivo/Desinstalar Transcricao ao Vivo.command"; do
+          sudo installer -pkg "BandChatLIVE-$VERSION-macOS.pkg" -target /
+          for p in "/Library/Audio/Plug-Ins/VST3/BandChatLIVE.vst3" \
+                   "/Library/Audio/Plug-Ins/Components/BandChatLIVE.component" \
+                   "/Applications/BandChatLIVE.app" \
+                   "/Library/Application Support/BandChatLIVE/Desinstalar BandChatLIVE.command"; do
             test -e "$p" && echo "ok: $p"
           done
-          for m in $MODELS; do test -s "/Library/Application Support/TranscricaoAoVivo/modelos/$m" && echo "ok: modelo $m"; done
-          lipo -info "/Library/Audio/Plug-Ins/VST3/Transcricao ao Vivo.vst3/Contents/MacOS/Transcricao ao Vivo"
+          for m in $MODELS; do test -s "/Library/Application Support/BandChatLIVE/modelos/$m" && echo "ok: modelo $m"; done
+          lipo -info "/Library/Audio/Plug-Ins/VST3/BandChatLIVE.vst3/Contents/MacOS/BandChatLIVE"
           killall -9 AudioComponentRegistrar 2>/dev/null || true
           sleep 3
-          auval -v aufx TrAV DvSl          # validação oficial da Apple, no AU já instalado
+          auval -v aufx BcLv DvSl          # validação oficial da Apple, no AU já instalado
 
       - uses: actions/upload-artifact@v4
         with:
           name: Instalador-macOS
-          path: TranscricaoAoVivo-*-macOS.pkg
+          path: BandChatLIVE-*-macOS.pkg
 
   # ---------------------------------------------------------------------------
   windows:
@@ -161,13 +161,13 @@ jobs:
       - name: Configurar
         run: cmake -S . -B build -A x64 -DTAV_BUILD_TESTS=ON   # usa o Visual Studio que o runner tiver
       - name: Compilar
-        run: cmake --build build --config Release --target TranscricaoAoVivo_VST3 TranscricaoAoVivo_Standalone TavTests -- /m /v:minimal
+        run: cmake --build build --config Release --target BandChatLIVE_VST3 BandChatLIVE_Standalone TavTests -- /m /v:minimal
       - name: Testes do motor
         run: '& "build/TavTests_artefacts/Release/TavTests.exe" tests/audio/teste.wav'
       - name: Plugin não depende do Visual C++ Redistributable
         shell: pwsh
         run: |
-          $dll = "build/TranscricaoAoVivo_artefacts/Release/VST3/Transcricao ao Vivo.vst3/Contents/x86_64-win/Transcricao ao Vivo.vst3"
+          $dll = "build/BandChatLIVE_artefacts/Release/VST3/BandChatLIVE.vst3/Contents/x86_64-win/BandChatLIVE.vst3"
           $txt = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
           if ($txt -match '(?i)(vcruntime|msvcp)1\d\d\.dll') { throw "o plugin depende de $($Matches[0])" }
           "ok: runtime do Visual C++ embutido"
@@ -189,25 +189,25 @@ jobs:
           $version = (Get-Content VERSAO -Raw).Trim()
           "VERSION=$version" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item -Recurse "build/TranscricaoAoVivo_artefacts/Release/VST3/Transcricao ao Vivo.vst3" out/
-          Copy-Item "build/TranscricaoAoVivo_artefacts/Release/Standalone/Transcricao ao Vivo.exe" out/
+          Copy-Item -Recurse "build/BandChatLIVE_artefacts/Release/VST3/BandChatLIVE.vst3" out/
+          Copy-Item "build/BandChatLIVE_artefacts/Release/Standalone/BandChatLIVE.exe" out/
           Copy-Item README.md out/LEIA-ME.md
-          & $iscc /Q "/DAppVersion=$version" "/DSrcDir=$PWD\out" "/DModelsDir=$PWD\modelos" "/DOutDir=$PWD" installer/windows/TranscricaoAoVivo.iss
+          & $iscc /Q "/DAppVersion=$version" "/DSrcDir=$PWD\out" "/DModelsDir=$PWD\modelos" "/DOutDir=$PWD" installer/windows/BandChatLIVE.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC falhou" }
 
       - name: Testar instalar e desinstalar
         shell: pwsh
         run: |
-          $setup = Get-ChildItem "TranscricaoAoVivo-*-Windows-Setup.exe" | Select-Object -First 1
+          $setup = Get-ChildItem "BandChatLIVE-*-Windows-Setup.exe" | Select-Object -First 1
           $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=install.log' -Wait -PassThru
           if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 30; throw "instalação falhou ($($p.ExitCode))" }
           $files = @(
-            "$env:CommonProgramFiles\VST3\Transcricao ao Vivo.vst3\Contents\x86_64-win\Transcricao ao Vivo.vst3",
-            "$env:ProgramFiles\Transcricao ao Vivo\Transcricao ao Vivo.exe",
-            "$env:ProgramData\TranscricaoAoVivo\modelos\ggml-base-q5_1.bin",
-            "$env:ProgramData\TranscricaoAoVivo\modelos\ggml-small-q5_1.bin")
+            "$env:CommonProgramFiles\VST3\BandChatLIVE.vst3\Contents\x86_64-win\BandChatLIVE.vst3",
+            "$env:ProgramFiles\BandChatLIVE\BandChatLIVE.exe",
+            "$env:ProgramData\BandChatLIVE\modelos\ggml-base-q5_1.bin",
+            "$env:ProgramData\BandChatLIVE\modelos\ggml-small-q5_1.bin")
           foreach ($f in $files) { if (-not (Test-Path $f)) { throw "faltando: $f" }; "ok: $f" }
-          Start-Process "$env:ProgramFiles\Transcricao ao Vivo\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          Start-Process "$env:ProgramFiles\BandChatLIVE\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
           for ($i = 0; $i -lt 30 -and (Test-Path $files[0]); $i++) { Start-Sleep 1 }
           if (Test-Path $files[0]) { throw "a desinstalação deixou o plugin para trás" }
           "ok: desinstalado"
@@ -215,7 +215,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Instalador-Windows
-          path: TranscricaoAoVivo-*-Windows-Setup.exe
+          path: BandChatLIVE-*-Windows-Setup.exe
 
   # ---------------------------------------------------------------------------
   # Linux: carrega o VST3 num host de teste (estado, várias instâncias, fluxo)
@@ -240,7 +240,7 @@ jobs:
       - name: Host de teste (VST3, modo demo)
         run: |
           export DISPLAY=:99; Xvfb :99 -screen 0 1280x900x24 & sleep 1
-          TAV_DEMO=1 ./build/HostTest_artefacts/Release/HostTest "build/TranscricaoAoVivo_artefacts/Release/VST3/Transcricao ao Vivo.vst3" tests/audio/teste.wav
+          TAV_DEMO=1 ./build/HostTest_artefacts/Release/HostTest "build/BandChatLIVE_artefacts/Release/VST3/BandChatLIVE.vst3" tests/audio/teste.wav
 
   # ---------------------------------------------------------------------------
   release:
@@ -257,7 +257,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          name: Transcrição ao Vivo ${{ github.ref_name }}
+          name: BandChatLIVE ${{ github.ref_name }}
           body: |
             **macOS** (Apple Silicon e Intel, macOS 11+): baixe o `.pkg` e dê dois cliques.
             **Windows** (10/11, 64 bits): baixe o `Setup.exe` e dê dois cliques.

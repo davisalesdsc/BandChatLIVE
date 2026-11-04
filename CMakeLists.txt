@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 
 # ---------------------------------------------------------------------------
-# Transcrição ao Vivo - plugin VST3 / AU / Standalone
+# BandChatLIVE - plugin VST3 / AU / Standalone
 # JUCE (interface + formatos de plugin) + whisper.cpp (Whisper e VAD Silero)
 # ---------------------------------------------------------------------------
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSAO" TAV_VERSAO LIMIT_COUNT 1)
 string(STRIP "${TAV_VERSAO}" TAV_VERSAO)
-project(TranscricaoAoVivo VERSION ${TAV_VERSAO} LANGUAGES C CXX)
+project(BandChatLIVE VERSION ${TAV_VERSAO} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -105,7 +105,7 @@ juce_add_binary_data(TavData SOURCES "${CMAKE_CURRENT_BINARY_DIR}/res/silero_vad
 
 # ---- identidade ------------------------------------------------------------
 set(TAV_COMPANY     "Davi Sales")
-set(TAV_BUNDLE_BASE "com.davisales.transcricaoaovivo")
+set(TAV_BUNDLE_BASE "com.davisales.bandchatlive")
 
 set(TAV_ENGINE_SOURCES
     Source/Engine/TextFilter.cpp
@@ -138,13 +138,13 @@ if(APPLE)
     list(APPEND TAV_FORMATS AU)
 endif()
 
-juce_add_plugin(TranscricaoAoVivo
+juce_add_plugin(BandChatLIVE
     COMPANY_NAME                "${TAV_COMPANY}"
     BUNDLE_ID                   "${TAV_BUNDLE_BASE}.plugin"
     PLUGIN_MANUFACTURER_CODE    DvSl
-    PLUGIN_CODE                 TrAV
+    PLUGIN_CODE                 BcLv
     FORMATS                     ${TAV_FORMATS}
-    PRODUCT_NAME                "Transcricao ao Vivo"
+    PRODUCT_NAME                "BandChatLIVE"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
@@ -152,21 +152,21 @@ juce_add_plugin(TranscricaoAoVivo
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     NEEDS_CURL                  ${TAV_NEEDS_CURL}
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT  "O Transcrição ao Vivo usa o microfone para transcrever a fala."
+    MICROPHONE_PERMISSION_TEXT  "O BandChatLIVE usa o microfone para transcrever a fala."
     COPY_PLUGIN_AFTER_BUILD     ${TAV_COPY_PLUGIN}
     VST3_CATEGORIES             Analyzer Tools
     AU_MAIN_TYPE                kAudioUnitType_Effect)
 
-target_sources(TranscricaoAoVivo PRIVATE
+target_sources(BandChatLIVE PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/UI/TranscriptView.cpp
     Source/UI/PopoutWindow.cpp
     ${TAV_ENGINE_SOURCES})
 
-target_include_directories(TranscricaoAoVivo PRIVATE Source)
-target_compile_definitions(TranscricaoAoVivo PUBLIC ${TAV_DEFS})
-target_link_libraries(TranscricaoAoVivo
+target_include_directories(BandChatLIVE PRIVATE Source)
+target_compile_definitions(BandChatLIVE PUBLIC ${TAV_DEFS})
+target_link_libraries(BandChatLIVE
     PRIVATE
         TavData
         whisper
@@ -176,7 +176,7 @@ target_link_libraries(TranscricaoAoVivo
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 if(NOT MSVC)
-    target_link_libraries(TranscricaoAoVivo PUBLIC juce::juce_recommended_lto_flags)
+    target_link_libraries(BandChatLIVE PUBLIC juce::juce_recommended_lto_flags)
 endif()
 
 # ---- testes (console) --------------------------------------------------------

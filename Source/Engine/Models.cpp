@@ -11,7 +11,7 @@ juce::File dataDir()
    #else
     auto base = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
    #endif
-    auto d = base.getChildFile ("TranscricaoAoVivo");
+    auto d = base.getChildFile ("BandChatLIVE");
     d.createDirectory();
     return d;
 }
@@ -21,12 +21,12 @@ juce::File modelsDir() { auto d = dataDir().getChildFile ("modelos"); d.createDi
 juce::File systemModelsDir()
 {
    #if JUCE_MAC
-    return juce::File ("/Library/Application Support/TranscricaoAoVivo/modelos");
+    return juce::File ("/Library/Application Support/BandChatLIVE/modelos");
    #elif JUCE_WINDOWS
     return juce::File::getSpecialLocation (juce::File::commonApplicationDataDirectory)   // C:\ProgramData
-               .getChildFile ("TranscricaoAoVivo").getChildFile ("modelos");
+               .getChildFile ("BandChatLIVE").getChildFile ("modelos");
    #else
-    return juce::File ("/usr/local/share/TranscricaoAoVivo/modelos");
+    return juce::File ("/usr/local/share/BandChatLIVE/modelos");
    #endif
 }
 juce::File logsDir()   { auto d = dataDir().getChildFile ("Logs");    d.createDirectory(); return d; }

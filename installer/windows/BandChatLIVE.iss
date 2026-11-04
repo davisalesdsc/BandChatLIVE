@@ -1,5 +1,5 @@
 ﻿; Instalador do Windows (Inno Setup 6). Compilado pelo CI:
-;   ISCC /DAppVersion=0.2 /DSrcDir=<pasta com .vst3 e .exe> /DModelsDir=<pasta dos modelos> TranscricaoAoVivo.iss
+;   ISCC /DAppVersion=0.2 /DSrcDir=<pasta com .vst3 e .exe> /DModelsDir=<pasta dos modelos> BandChatLIVE.iss
 ; Cada modelo que existir em ModelsDir vira uma opção na instalação.
 
 #ifndef AppVersion
@@ -15,29 +15,29 @@
   #define OutDir "."
 #endif
 
-#define Plugin "Transcricao ao Vivo"
+#define Plugin "BandChatLIVE"
 #define HasRapido FileExists(ModelsDir + "\ggml-base-q5_1.bin")
 #define HasEquilibrado FileExists(ModelsDir + "\ggml-small-q5_1.bin")
 
 [Setup]
-AppId={{B1A4C319-AFAD-4BF0-8DA8-CBEBE4EFAC5C}
-AppName=Transcrição ao Vivo
+AppId={{8609E196-C0A4-4134-ABCB-A3E0F55054DD}
+AppName=BandChatLIVE
 AppVersion={#AppVersion}
-AppVerName=Transcrição ao Vivo {#AppVersion}
+AppVerName=BandChatLIVE {#AppVersion}
 AppPublisher=Davi Sales
 DefaultDirName={autopf}\{#Plugin}
-DefaultGroupName=Transcrição ao Vivo
+DefaultGroupName=BandChatLIVE
 DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 MinVersion=10.0
 OutputDir={#OutDir}
-OutputBaseFilename=TranscricaoAoVivo-{#AppVersion}-Windows-Setup
+OutputBaseFilename=BandChatLIVE-{#AppVersion}-Windows-Setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayName=Transcrição ao Vivo
+UninstallDisplayName=BandChatLIVE
 UninstallDisplayIcon={app}\{#Plugin}.exe
 CloseApplications=yes
 
@@ -51,7 +51,7 @@ Name: "personalizada"; Description: "Personalizada"; Flags: iscustom
 
 [Components]
 Name: "vst3"; Description: "Plugin VST3 (REAPER, Ableton, Cubase, Studio One, SuperRack, Live Professor...)"; Types: completa personalizada
-Name: "app"; Description: "App Transcrição ao Vivo (usa o microfone direto, sem DAW)"; Types: completa personalizada
+Name: "app"; Description: "App BandChatLIVE (usa o microfone direto, sem DAW)"; Types: completa personalizada
 #if HasRapido || HasEquilibrado
 Name: "modelos"; Description: "Modelos de voz (funcionam offline desde o primeiro uso)"; Types: completa personalizada
 #endif
@@ -74,21 +74,21 @@ Source: "{#SrcDir}\{#Plugin}.vst3\*"; DestDir: "{commoncf64}\VST3\{#Plugin}.vst3
 Source: "{#SrcDir}\{#Plugin}.exe"; DestDir: "{app}"; Components: app; Flags: ignoreversion
 Source: "{#SrcDir}\LEIA-ME.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 #if HasRapido
-Source: "{#ModelsDir}\ggml-base-q5_1.bin"; DestDir: "{commonappdata}\TranscricaoAoVivo\modelos"; Components: modelos\rapido; Flags: ignoreversion
+Source: "{#ModelsDir}\ggml-base-q5_1.bin"; DestDir: "{commonappdata}\BandChatLIVE\modelos"; Components: modelos\rapido; Flags: ignoreversion
 #endif
 #if HasEquilibrado
-Source: "{#ModelsDir}\ggml-small-q5_1.bin"; DestDir: "{commonappdata}\TranscricaoAoVivo\modelos"; Components: modelos\equilibrado; Flags: ignoreversion
+Source: "{#ModelsDir}\ggml-small-q5_1.bin"; DestDir: "{commonappdata}\BandChatLIVE\modelos"; Components: modelos\equilibrado; Flags: ignoreversion
 #endif
 
 [Icons]
-Name: "{autoprograms}\Transcrição ao Vivo"; Filename: "{app}\{#Plugin}.exe"; Components: app
-Name: "{autodesktop}\Transcrição ao Vivo"; Filename: "{app}\{#Plugin}.exe"; Components: app; Tasks: atalho
+Name: "{autoprograms}\BandChatLIVE"; Filename: "{app}\{#Plugin}.exe"; Components: app
+Name: "{autodesktop}\BandChatLIVE"; Filename: "{app}\{#Plugin}.exe"; Components: app; Tasks: atalho
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commoncf64}\VST3\{#Plugin}.vst3"
 
 [Messages]
-pt.FinishedLabel=Instalado! Abra o seu programa (REAPER, SuperRack, Ableton...) e peça para procurar plugins de novo. Depois coloque "Transcrição ao Vivo" no canal do microfone.%n%nQuer mais precisão? No plugin, abra AVANÇADO e baixe o modelo "Mais preciso".
+pt.FinishedLabel=Instalado! Abra o seu programa (REAPER, SuperRack, Ableton...) e peça para procurar plugins de novo. Depois coloque "BandChatLIVE" no canal do microfone.%n%nQuer mais precisão? No plugin, abra AVANÇADO e baixe o modelo "Mais preciso".
 
 [Code]
 // O motor usa instruções AVX2 (todo PC de 2013 em diante). Sem elas o plugin

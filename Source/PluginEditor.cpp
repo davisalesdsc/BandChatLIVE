@@ -272,10 +272,10 @@ void TranscricaoEditor::paint (juce::Graphics& g)
     auto title = h.withTrimmedTop (30);
     g.setFont (theme::font (24.0f, true));
     g.setColour (theme::text);
-    const auto t1 = u8 ("TRANSCRIÇÃO ");
+    const auto t1 = juce::String ("BANDCHAT");
     g.drawText (t1, title, juce::Justification::left);
     g.setColour (theme::accentHv);
-    g.drawText ("AO VIVO", title.withTrimmedLeft ((int) juce::GlyphArrangement::getStringWidth (theme::font (24.0f, true), t1)),
+    g.drawText ("LIVE", title.withTrimmedLeft ((int) juce::GlyphArrangement::getStringWidth (theme::font (24.0f, true), t1)),
                 juce::Justification::left);
     g.setFont (theme::font (11.0f));
     g.setColour (theme::textMuted);

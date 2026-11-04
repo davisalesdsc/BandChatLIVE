@@ -4,7 +4,7 @@
 #   build-pkg.sh <pasta_com_os_bundles> <pasta_dos_modelos> <versao> <saida.pkg>
 #
 # <pasta_com_os_bundles> precisa ter (universais, já assinados):
-#     Transcricao ao Vivo.vst3   Transcricao ao Vivo.component   Transcricao ao Vivo.app
+#     BandChatLIVE.vst3   BandChatLIVE.component   BandChatLIVE.app
 # <pasta_dos_modelos> pode ter ggml-base-q5_1.bin e/ou ggml-small-q5_1.bin
 # (cada um que existir vira uma opção no instalador).
 #
@@ -19,9 +19,9 @@ VERSION="$3"
 OUT="$4"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-NAME="Transcricao ao Vivo"
-ID="com.davisales.transcricaoaovivo"
-SUPPORT="/Library/Application Support/TranscricaoAoVivo"
+NAME="BandChatLIVE"
+ID="com.davisales.bandchatlive"
+SUPPORT="/Library/Application Support/BandChatLIVE"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -93,8 +93,8 @@ bundle_pkg "$NAME.app"       "/Applications"                      "$ID.app" \
 
 # --- suporte: desinstalador + LEIA-ME (sempre instalado, invisível) ----------
 mkdir -p "$WORK/root-suporte"
-cp "$HERE/Desinstalar.command" "$WORK/root-suporte/Desinstalar Transcricao ao Vivo.command"
-chmod +x "$WORK/root-suporte/Desinstalar Transcricao ao Vivo.command"
+cp "$HERE/Desinstalar.command" "$WORK/root-suporte/Desinstalar BandChatLIVE.command"
+chmod +x "$WORK/root-suporte/Desinstalar BandChatLIVE.command"
 cp "$HERE/../../README.md" "$WORK/root-suporte/LEIA-ME.md"
 pkgbuild --root "$WORK/root-suporte" --identifier "$ID.suporte" --version "$VERSION" \
          --install-location "$SUPPORT" "$WORK/pkgs/suporte.pkg" >/dev/null
@@ -136,7 +136,7 @@ fi
 cat > "$WORK/Distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-  <title>Transcrição ao Vivo $VERSION</title>
+  <title>BandChatLIVE $VERSION</title>
   <organization>com.davisales</organization>
   <welcome file="welcome.html" mime-type="text/html"/>
   <conclusion file="conclusion.html" mime-type="text/html"/>
@@ -158,7 +158,7 @@ $MODELS_OUTLINE
   <choice id="au" title="Plugin AU (Audio Unit)" description="Para Logic Pro, MainStage e GarageBand.">
     <pkg-ref id="$ID.au"/>
   </choice>
-  <choice id="app" title="App Transcrição ao Vivo" description="Usa o microfone direto, sem precisar de DAW.">
+  <choice id="app" title="App BandChatLIVE" description="Usa o microfone direto, sem precisar de DAW.">
     <pkg-ref id="$ID.app"/>
   </choice>
 $MODEL_CHOICES  <choice id="suporte" title="Desinstalador" visible="false">

@@ -24,7 +24,7 @@ juce::AudioProcessor::BusesProperties TranscricaoProcessor::makeBuses()
 
 TranscricaoProcessor::TranscricaoProcessor()
     : AudioProcessor (makeBuses()),
-      params (*this, nullptr, "TranscricaoAoVivo", createLayout())
+      params (*this, nullptr, "BandChatLIVE", createLayout())
 {
     transcribeParam = params.getRawParameterValue (ids::transcribe);
     for (auto* id : { &ids::gate, &ids::vadsens, &ids::hold, &ids::partials })

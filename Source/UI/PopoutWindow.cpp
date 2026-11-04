@@ -3,7 +3,7 @@
 static juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 
 PopoutWindow::PopoutWindow (TranscricaoProcessor& p)
-    : juce::DocumentWindow (u8 ("Transcrição ao Vivo"), theme::bg, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+    : juce::DocumentWindow (u8 ("BandChatLIVE"), theme::bg, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
       proc (p)
 {
     setLookAndFeel (&lnf);
