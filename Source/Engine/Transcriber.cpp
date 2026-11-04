@@ -7,7 +7,6 @@ namespace tav
 static constexpr int kRate = Segmenter::kRate;
 static constexpr int kFrame = Segmenter::kFrame;
 static constexpr int kSlowStreak = 3;          // frases seguidas atrasadas antes de aliviar
-static constexpr size_t kMaxLines = 3000;
 
 static juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 
@@ -20,7 +19,10 @@ static bool demoMode()
 }
 
 Transcriber::Transcriber()
+    : hub (Hub::get()),
+      sourceId ("c" + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64()))
 {
+    channelNumber = hub->addSource (sourceId);
     fifoData.resize ((size_t) fifo.getTotalSize());
     listener = std::make_unique<Worker> ("TAV ouvido", [this] { listenLoop(); });
     scribe   = std::make_unique<Worker> ("TAV escriba", [this] { scribeLoop(); });
@@ -40,6 +42,7 @@ Transcriber::~Transcriber()
     listener->stopThread (3000);
     scribe->stopThread (8000);
     session.reset();
+    hub->removeSource (sourceId);
 }
 
 //==============================================================================
@@ -365,7 +368,7 @@ void Transcriber::process (Job& job, int newerFinalsWaiting)
         publish (job.id, job.timeMs, text, LineKind::final);
     shownPartials.removeString (job.id);
     if (text.isNotEmpty() && s.writeLog)
-        appendTranscript (job.timeMs, s.channelName, text);
+        appendTranscript (job.timeMs, getChannelName(), text);
 
     // "não acompanha" = várias frases seguidas saindo com atraso acima do limite
     slowStreak = delay > s.maxDelayS ? slowStreak + 1 : 0;
@@ -404,27 +407,27 @@ void Transcriber::relieve()
 }
 
 //==============================================================================
+juce::String Transcriber::getChannelName() const
+{
+    const auto s = getSettings();
+    if (s.channelName.trim().isNotEmpty()) return s.channelName.trim();
+    // sem nome (host não informa a faixa e ninguém digitou): com mais de um
+    // canal aberto, numera para dar para saber quem falou
+    return hub->getNumSources() > 1 ? "Canal " + juce::String (channelNumber) : juce::String();
+}
+
 void Transcriber::publish (const juce::String& id, juce::int64 timeMs, const juce::String& text, LineKind kind)
 {
-    {
-        std::lock_guard<std::mutex> g (linesLock);
-        int found = -1;
-        if (kind != LineKind::system)
-            for (int i = (int) lines.size() - 1; i >= juce::jmax (0, (int) lines.size() - 40); --i)
-                if (lines[(size_t) i].id == id) { found = i; break; }
-
-        if (found >= 0)
-        {
-            if (text.isEmpty()) lines.erase (lines.begin() + found);
-            else { lines[(size_t) found].text = text; lines[(size_t) found].kind = kind; }
-        }
-        else if (text.isNotEmpty())
-        {
-            lines.push_back ({ id, timeMs, text, kind });
-            if (lines.size() > kMaxLines) lines.erase (lines.begin(), lines.begin() + (ptrdiff_t) (lines.size() - kMaxLines));
-        }
-    }
-    linesVersion.fetch_add (1);
+    Hub::Entry e;
+    e.id      = sourceId + ":" + id;
+    e.timeMs  = timeMs;
+    e.source  = sourceId;
+    e.channel = getChannelName();
+    const auto c = getSettings().channelColour;
+    e.colour  = c != 0 ? c : Hub::paletteColour (channelNumber);
+    e.text    = text;
+    e.kind    = kind == LineKind::final ? Hub::Kind::final : (kind == LineKind::partial ? Hub::Kind::partial : Hub::Kind::system);
+    hub->publish (e);
 }
 
 void Transcriber::notice (const juce::String& text)
@@ -437,19 +440,6 @@ void Transcriber::notice (const juce::String& text)
     debugLog ("aviso", text);
     const auto now = juce::Time::currentTimeMillis();
     publish ("s" + juce::String (now), now, text, LineKind::system);
-}
-
-std::vector<Transcriber::Line> Transcriber::getLines (int& version) const
-{
-    std::lock_guard<std::mutex> g (linesLock);
-    version = linesVersion.load();
-    return lines;
-}
-
-void Transcriber::clearLines()
-{
-    { std::lock_guard<std::mutex> g (linesLock); lines.clear(); }
-    linesVersion.fetch_add (1);
 }
 
 } // namespace tav

@@ -201,7 +201,17 @@ juce::String Session::transcribe (const std::vector<float>& input, const Options
     p.abort_callback = abortCallback;
     p.abort_callback_user_data = &aborting;
 
-    if (whisper_full_with_state (model->ctx, state, p, audio.data(), (int) audio.size()) != 0)
+    // Uma transcrição por vez no processo inteiro: com vários canais (várias
+    // instâncias), cada frase usa a CPU/GPU toda em vez de todas disputarem e
+    // atrasarem juntas. Frases curtas: a fila anda rápido.
+    static std::mutex oneAtATime;
+    int rc;
+    {
+        std::lock_guard<std::mutex> g (oneAtATime);
+        if (aborting.load()) return {};
+        rc = whisper_full_with_state (model->ctx, state, p, audio.data(), (int) audio.size());
+    }
+    if (rc != 0)
         return {};
 
     juce::String result;

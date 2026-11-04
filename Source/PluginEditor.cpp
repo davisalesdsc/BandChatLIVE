@@ -50,7 +50,8 @@ TranscricaoEditor::TranscricaoEditor (TranscricaoProcessor& p)
     bindText (corrections, "correcoes", "",
               u8 ("Conserta palavras no texto final.  Ex.:  david => Davi ; in ear => in-ear"));
     bindText (channelName, "canal", "",
-              u8 ("Aparece antes de cada frase no histórico (ex.: Cantor, Baixista)."));
+              u8 ("Nome que aparece antes das falas deste canal (ex.: Comunicação Davi). Vazio = usa o nome "
+                  "da faixa no DAW, quando o programa informa."));
 
     mode.addItem (u8 ("Automático"), 1);
     mode.addItem (u8 ("Leve (responde rápido)"), 2);
@@ -127,7 +128,8 @@ TranscricaoEditor::TranscricaoEditor (TranscricaoProcessor& p)
     addAndMakeVisible (view);
 
     copyBtn.onClick  = [this] { juce::SystemClipboard::copyTextToClipboard (view.finalTextForCopy()); };
-    clearBtn.onClick = [this] { proc.getTranscriber().clearLines(); };
+    clearBtn.onClick = [this] { proc.getTranscriber().getHub().clear(); };
+    clearBtn.setTooltip (u8 ("Limpa a conversa de todos os canais."));
     logsBtn.onClick  = [] { tav::models::logsDir().startAsProcess(); };
     logsBtn.setTooltip (u8 ("Abre a pasta com o histórico diário (um .txt por dia)."));
     for (auto* b : { &copyBtn, &clearBtn, &logsBtn }) addAndMakeVisible (b);
@@ -145,6 +147,11 @@ TranscricaoEditor::TranscricaoEditor (TranscricaoProcessor& p)
     autoscroll.setToggleState ((bool) proc.getPref ("autoscroll", true), juce::dontSendNotification);
     autoscroll.onClick = [this] { proc.setPref ("autoscroll", autoscroll.getToggleState()); };
     addAndMakeVisible (autoscroll);
+    allChannels.setToggleState ((bool) proc.getPref ("todos", true), juce::dontSendNotification);
+    allChannels.onClick = [this] { proc.setPref ("todos", allChannels.getToggleState()); };
+    allChannels.setTooltip (u8 ("Ligado: mostra a conversa de todos os BandChatLIVE abertos neste programa. "
+                                "Desligado: só deste canal."));
+    addAndMakeVisible (allChannels);
 
     advOpen = (bool) proc.getPref ("avancado", false);
     setResizable (true, true);
@@ -232,6 +239,15 @@ void TranscricaoEditor::timerCallback()
 
     meterDb = proc.getInputLevelDb();
 
+    const auto chName = tr.getChannelName();
+    const int nCh = tr.getHub().getNumSources();
+    channelText = chName.isNotEmpty() ? "Canal: " + chName : juce::String();
+    if (nCh > 1) channelText << "  (" << nCh << " canais abertos)";
+    const auto track = proc.getTrackName();
+    channelName.setTextToShowWhenEmpty (track.isNotEmpty() ? u8 ("automático: ") + track
+                                                           : u8 ("automático: nome da faixa no DAW"),
+                                        theme::textMuted);
+
     // downloads
     auto& dl = tav::models::Downloader::get();
     const bool busy = dl.isBusy();
@@ -249,7 +265,7 @@ void TranscricaoEditor::timerCallback()
     if (! busy && dl.getLastResult().startsWith ("erro"))
         modelsInfo.setText (dl.getLastResult(), juce::dontSendNotification);
 
-    repaint (statusArea.getUnion (meterArea).getUnion (messageArea));
+    repaint (statusArea.getUnion (meterArea).getUnion (messageArea).getUnion (headerArea));
 }
 
 //==============================================================================
@@ -279,7 +295,16 @@ void TranscricaoEditor::paint (juce::Graphics& g)
                 juce::Justification::left);
     g.setFont (theme::font (11.0f));
     g.setColour (theme::textMuted);
-    g.drawText (juce::String ("v") + TAV_VERSAO, h.withTrimmedRight (popoutBtn.getWidth() + 10).withTrimmedTop (40),
+    if (channelText.isNotEmpty())
+    {
+        g.setFont (theme::font (12.0f, true));
+        g.setColour (theme::textDim);
+        g.drawText (channelText, h.withTrimmedTop (34).withTrimmedRight (popoutBtn.getWidth() + 10).removeFromTop (14),
+                    juce::Justification::right, true);
+        g.setFont (theme::font (11.0f));
+        g.setColour (theme::textMuted);
+    }
+    g.drawText (juce::String ("v") + TAV_VERSAO, h.withTrimmedRight (popoutBtn.getWidth() + 10).withTrimmedTop (48),
                 juce::Justification::right);
 
     // status: dois pontos coloridos
@@ -371,7 +396,8 @@ void TranscricaoEditor::resized()
     fontLbl.setBounds (bottom.removeFromLeft (112));
     fontSize.setBounds (bottom.removeFromLeft (150));
     bottom.removeFromLeft (16);
-    autoscroll.setBounds (bottom);
+    autoscroll.setBounds (bottom.removeFromLeft (juce::jmin (160, bottom.getWidth() / 2)));
+    allChannels.setBounds (bottom);
 }
 
 void TranscricaoEditor::layoutAdvanced (juce::Rectangle<int> r)

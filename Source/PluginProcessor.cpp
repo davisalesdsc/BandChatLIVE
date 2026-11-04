@@ -77,7 +77,13 @@ void TranscricaoProcessor::pushSettings()
     s.mode           = (tav::models::Mode) (int) getPref ("modo", 0);
     s.vocabulary     = getPref ("vocabulario", u8 ("bumbo, caixa, retorno, fone, in-ear, guitarra, violão, baixo, teclado, voz, monitor, volume")).toString();
     s.corrections    = getPref ("correcoes", "").toString();
-    s.channelName    = getPref ("canal", "").toString();
+    {
+        // nome digitado no AVANÇADO tem prioridade; senão, o nome da faixa no host
+        const juce::ScopedLock sl (trackLock);
+        const auto typed = getPref ("canal", "").toString().trim();
+        s.channelName   = typed.isNotEmpty() ? typed : trackName;
+        s.channelColour = trackColour;
+    }
     s.writeLog       = (bool) getPref ("log", true);
     transcriber.setSettings (s);
 }
@@ -170,6 +176,23 @@ void TranscricaoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     prevSample = mono[(size_t) n - 1];
 
     transcriber.pushAudio (out16.data(), produced);
+}
+
+void TranscricaoProcessor::updateTrackProperties (const TrackProperties& p)
+{
+    {
+        const juce::ScopedLock sl (trackLock);
+        trackName = p.name.value_or (juce::String()).trim();
+        trackColour = 0;
+        if (p.colourARGB.has_value())
+        {
+            // cor da faixa só se der para ler sobre o fundo preto
+            const juce::Colour c (*p.colourARGB);
+            if (c.getAlpha() > 0 && c.getPerceivedBrightness() > 0.25f)
+                trackColour = c.withAlpha (1.0f).getARGB();
+        }
+    }
+    triggerAsyncUpdate();       // pode chegar fora da thread de mensagens
 }
 
 bool TranscricaoProcessor::isReceivingAudio() const noexcept

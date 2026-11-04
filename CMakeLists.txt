@@ -120,6 +120,7 @@ set(TAV_ENGINE_SOURCES
     Source/Engine/WhisperBackend.cpp
     Source/Engine/Transcriber.cpp
     Source/Engine/Models.cpp
+    Source/Engine/Hub.cpp
     Source/Common/TranscriptLog.cpp)
 
 set(TAV_DEFS

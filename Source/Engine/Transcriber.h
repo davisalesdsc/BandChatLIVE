@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Hub.h"
 #include "Models.h"
 #include "Segmenter.h"
 #include "TextFilter.h"
@@ -35,19 +36,12 @@ public:
         models::Mode mode     = models::Mode::automatic;
         juce::String vocabulary;          // vira o initial_prompt
         juce::String corrections;         // "errado => certo ; ..."
-        juce::String channelName;         // prefixo no log diário
+        juce::String channelName;         // nome do canal (pref. manual ou nome da faixa no host)
+        juce::uint32 channelColour = 0;   // cor da faixa no host (0 = paleta)
         bool  writeLog        = true;
     };
 
     enum class LineKind { final, partial, system };
-
-    struct Line
-    {
-        juce::String id;
-        juce::int64  timeMs = 0;
-        juce::String text;
-        LineKind     kind = LineKind::final;
-    };
 
     enum class State { noModel, loading, listening, transcribing, error };
 
@@ -67,9 +61,11 @@ public:
     /** Escolhe de novo o modelo pelo modo atual (após baixar um modelo, trocar o modo...). */
     void refreshModel();
 
-    std::vector<Line> getLines (int& version) const;
-    int  getLinesVersion() const noexcept { return linesVersion.load(); }
-    void clearLines();
+    //-- conversa compartilhada (todas as instâncias do processo) ----------------
+    Hub& getHub() noexcept                         { return *hub; }
+    const juce::String& getSourceId() const noexcept { return sourceId; }
+    /** Nome mostrado antes das falas deste canal ("" quando é o único canal sem nome). */
+    juce::String getChannelName() const;
 
     State        getState() const noexcept        { return state.load(); }
     juce::String getModelLabel() const;
@@ -149,10 +145,10 @@ private:
     bool economic = false;
     juce::StringArray shownPartials;
 
-    // linhas
-    mutable std::mutex linesLock;
-    std::vector<Line> lines;
-    std::atomic<int>  linesVersion { 0 };
+    // conversa compartilhada
+    std::shared_ptr<Hub> hub;
+    juce::String sourceId;
+    int channelNumber = 1;
 
     std::unique_ptr<Worker> listener, scribe;
     std::atomic<bool> quitting { false };

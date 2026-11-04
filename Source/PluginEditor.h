@@ -67,10 +67,11 @@ private:
     juce::Slider fontSize;
     juce::Label fontLbl;
     juce::ToggleButton autoscroll { TranscricaoProcessor::u8 ("Rolagem automática") };
+    juce::ToggleButton allChannels { TranscricaoProcessor::u8 ("Todos os canais") };
 
     // estado desenhado no paint
     juce::Rectangle<int> statusArea, meterArea, messageArea, headerArea;
-    juce::String capText, trText, msgText;
+    juce::String capText, trText, msgText, channelText;
     juce::Colour capColour, trColour, msgColour;
     float meterDb = -100.0f;
     int seenDownloads = -1;

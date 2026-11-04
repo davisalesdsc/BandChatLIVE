@@ -40,6 +40,11 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
+    /** O host informa o nome/cor da faixa (REAPER, Cubase, Studio One, Live,
+        Logic...): vira o nome do canal na conversa, se ninguém digitou outro. */
+    void updateTrackProperties (const TrackProperties& properties) override;
+    juce::String getTrackName() const { const juce::ScopedLock sl (trackLock); return trackName; }
+
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
@@ -86,6 +91,10 @@ private:
     std::atomic<float>* transcribeParam = nullptr;
 
     std::unique_ptr<PopoutWindow> popout;
+
+    juce::CriticalSection trackLock;
+    juce::String trackName;
+    juce::uint32 trackColour = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranscricaoProcessor)
 };

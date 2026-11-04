@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include "../Engine/TextFilter.h"
 
-using Kind = tav::Transcriber::LineKind;
+using Kind = tav::Hub::Kind;
 
 TranscriptView::TranscriptView (TranscricaoProcessor& p) : proc (p)
 {
@@ -42,17 +42,26 @@ void TranscriptView::paint (juce::Graphics& g)
 
 void TranscriptView::timerCallback()
 {
-    const int v = proc.getTranscriber().getLinesVersion();
+    auto& hub = proc.getTranscriber().getHub();
+    const int v = hub.getVersion();
     const int font = (int) proc.getPref ("fonte", 3);
     const auto kw = proc.getPref ("palavras", "").toString();
-    if (v != seenVersion || font != builtFont || kw != builtKeywords)
+    const bool all = (bool) proc.getPref ("todos", true);
+    if (v != seenVersion || font != builtFont || kw != builtKeywords || all != builtAll)
     {
+        builtAll = all;
         auto& vp = viewport;
         followBottom = (bool) proc.getPref ("autoscroll", true)
                     && vp.getViewPositionY() + vp.getViewHeight() >= content.getHeight() - 40;
         if (v != seenVersion && (bool) proc.getPref ("autoscroll", true) && seenVersion < 0)
             followBottom = true;
-        lines = proc.getTranscriber().getLines (seenVersion);
+        lines = hub.snapshot (seenVersion);
+        if (! all)
+        {
+            const auto me = proc.getTranscriber().getSourceId();
+            lines.erase (std::remove_if (lines.begin(), lines.end(),
+                                         [&] (const tav::Hub::Entry& e) { return e.source != me; }), lines.end());
+        }
         rebuild();
         repaint();
     }
@@ -82,6 +91,10 @@ void TranscriptView::rebuild()
 
         juce::AttributedString as;
         as.setWordWrap (juce::AttributedString::byWord);
+        // nome do canal em negrito, na cor do canal: "Comunicação Davi: texto"
+        if (l.channel.isNotEmpty())
+            as.append (l.channel + ": ", theme::font (l.kind == Kind::system ? size * 0.6f : size, true),
+                       juce::Colour (l.colour).withMultipliedAlpha (l.kind == Kind::partial ? 0.6f : 1.0f));
         if (l.kind == Kind::system)
         {
             as.append (l.text, theme::font (size * 0.6f), theme::warn);
@@ -133,6 +146,7 @@ juce::String TranscriptView::finalTextForCopy() const
     juce::StringArray out;
     for (auto& l : lines)
         if (l.kind == Kind::final)
-            out.add ("[" + juce::Time (l.timeMs).formatted ("%H:%M:%S") + "] " + l.text);
+            out.add ("[" + juce::Time (l.timeMs).formatted ("%H:%M:%S") + "] "
+                     + (l.channel.isNotEmpty() ? l.channel + ": " : juce::String()) + l.text);
     return out.joinIntoString ("\n");
 }

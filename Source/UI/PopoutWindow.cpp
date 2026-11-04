@@ -14,7 +14,7 @@ PopoutWindow::PopoutWindow (TranscricaoProcessor& p)
 
     const auto saved = p.getPref ("popGeom", "").toString();
     if (saved.isNotEmpty()) restoreWindowStateFromString (saved);
-    else centreWithSize (640, 420);
+    else centreWithSize (800, 420);
 
     setAlwaysOnTop ((bool) p.getPref ("popFixo", true));
     setVisible (true);
@@ -43,6 +43,8 @@ PopoutWindow::Body::Body (TranscricaoProcessor& p, PopoutWindow& w) : proc (p), 
     pin.onClick = [this] { proc.setPref ("popFixo", pin.getToggleState()); window.setAlwaysOnTop (pin.getToggleState()); };
     autoscroll.setToggleState ((bool) p.getPref ("autoscroll", true), juce::dontSendNotification);
     autoscroll.onClick = [this] { proc.setPref ("autoscroll", autoscroll.getToggleState()); };
+    allChannels.setToggleState ((bool) p.getPref ("todos", true), juce::dontSendNotification);
+    allChannels.onClick = [this] { proc.setPref ("todos", allChannels.getToggleState()); };
 
     fontSize.setSliderStyle (juce::Slider::LinearHorizontal);
     fontSize.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -58,10 +60,10 @@ PopoutWindow::Body::Body (TranscricaoProcessor& p, PopoutWindow& w) : proc (p), 
     };
     copy.onClick = [this] { juce::SystemClipboard::copyTextToClipboard (view.finalTextForCopy()); };
 
-    for (juce::Component* c : { (juce::Component*) &pin, (juce::Component*) &autoscroll, (juce::Component*) &fontSize,
+    for (juce::Component* c : { (juce::Component*) &pin, (juce::Component*) &autoscroll, (juce::Component*) &allChannels, (juce::Component*) &fontSize,
                                 (juce::Component*) &startStop, (juce::Component*) &copy, (juce::Component*) &view })
         addAndMakeVisible (c);
-    setSize (640, 420);
+    setSize (800, 420);
     timerCallback();
     startTimerHz (4);
 }
@@ -91,6 +93,7 @@ void PopoutWindow::Body::resized()
     bar.removeFromLeft (10);
     pin.setBounds (bar.removeFromLeft (140));
     autoscroll.setBounds (bar.removeFromLeft (90));
+    allChannels.setBounds (bar.removeFromLeft (140));
     fontSize.setBounds (bar.removeFromLeft (110));
     r.removeFromTop (8);
     view.setBounds (r);
@@ -100,7 +103,7 @@ void PopoutWindow::Body::paint (juce::Graphics& g)
 {
     g.fillAll (theme::bg);
     auto r = getLocalBounds().reduced (10).removeFromTop (28);
-    r.removeFromLeft (90 + 8 + 80 + 10 + 140 + 90 + 110 + 10);
+    r.removeFromLeft (90 + 8 + 80 + 10 + 140 + 90 + 140 + 110 + 10);
     if (r.getWidth() < 60) return;
     g.setColour (statusColour);
     g.fillEllipse ((float) r.getX(), (float) r.getCentreY() - 5.0f, 10.0f, 10.0f);

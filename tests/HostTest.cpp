@@ -166,27 +166,55 @@ int main (int argc, char* argv[])
         auto today = logs.getChildFile (juce::Time::getCurrentTime().formatted ("transcricao_%Y-%m-%d.txt"));
         const auto before = today.loadFileAsString();
 
+        // dois canais de comunicação, cada um com o nome da faixa informado
+        // pelo "host" (o mesmo caminho que REAPER/Cubase/Logic usam)
+        auto q = load (fm, path, 48000.0, 512);
+        check (q != nullptr, "segundo canal carrega");
+        juce::AudioProcessor::TrackProperties tp;
+        tp.name = juce::String::fromUTF8 ("Comunicação Palco");
+        p->updateTrackProperties (tp);
+        tp.name = juce::String::fromUTF8 ("Comunicação Davi");
+        tp.colourARGB = 0xff3366ffu;
+        q->updateTrackProperties (tp);
+        pump (300);
+
         p->prepareToPlay (48000.0, 512);
+        q->prepareToPlay (48000.0, 512);
         juce::MidiBuffer midi;
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
         for (int pos = 0; pos < audio.getNumSamples(); pos += 512)
         {
             const int n = juce::jmin (512, audio.getNumSamples() - pos);
-            juce::AudioBuffer<float> b (2, n);
-            for (int ch = 0; ch < 2; ++ch) b.copyFrom (ch, 0, audio, ch, pos, n);
+            juce::AudioBuffer<float> b (2, n), c (2, n);
+            for (int ch = 0; ch < 2; ++ch) { b.copyFrom (ch, 0, audio, ch, pos, n); c.copyFrom (ch, 0, audio, ch, pos, n); }
             p->processBlock (b, midi);
+            q->processBlock (c, midi);
             // ritmo de tempo real, como uma placa de som
             const double due = t0 + (pos + n) * 1000.0 / 48000.0;
             while (juce::Time::getMillisecondCounterHiRes() < due)
                 juce::MessageManager::getInstance()->runDispatchLoopUntil (2);
         }
         // 1,5 s de silêncio para fechar a última frase
-        for (int k = 0; k < 150; ++k) { juce::AudioBuffer<float> b (2, 480); b.clear(); p->processBlock (b, midi); pump (10); }
-        pump (1500);
+        for (int k = 0; k < 150; ++k)
+        {
+            juce::AudioBuffer<float> b (2, 480), c (2, 480); b.clear(); c.clear();
+            p->processBlock (b, midi); q->processBlock (c, midi); pump (10);
+        }
+        pump (2000);
         const auto added = today.loadFileAsString().substring (before.length());
         std::cout << added;
-        const int lines = juce::StringArray::fromLines (added.trim()).size();
-        check (added.contains ("[demo] fala de") && lines == 4, juce::String (lines) + " frases no histórico (esperado 4: o instrumento não conta)");
+        const auto all = juce::StringArray::fromLines (added.trim());
+        int palco = 0, davi = 0;
+        for (auto& l : all)
+        {
+            palco += l.contains (juce::String::fromUTF8 ("] Comunicação Palco: [demo] fala de")) ? 1 : 0;
+            davi  += l.contains (juce::String::fromUTF8 ("] Comunicação Davi: [demo] fala de")) ? 1 : 0;
+        }
+        check (palco == 4 && davi == 4 && all.size() == 8,
+               juce::String::fromUTF8 ("dois canais com nome no histórico: Palco ") + juce::String (palco)
+               + ", Davi " + juce::String (davi) + juce::String::fromUTF8 (" (esperado 4 e 4; o instrumento não conta)"));
+        q->releaseResources();
+        q.reset();
     }
 
     p->releaseResources();

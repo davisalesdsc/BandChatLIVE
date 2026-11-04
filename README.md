@@ -39,6 +39,32 @@ Plug-ins > VST > Re-scan; Logic: basta reabrir).
 **Desinstalar:** no Mac, dê dois cliques em *Desinstalar BandChatLIVE* na pasta
 `/Library/Application Support/BandChatLIVE`. No Windows, use Configurações > Aplicativos.
 
+## Vários canais de comunicação
+
+Coloque o **BandChatLIVE em cada canal de comunicação** (ex.: "Comunicação Palco", "Comunicação
+Davi"). Todos os BandChatLIVE abertos no mesmo programa compartilham **uma conversa só**, e a janela
+de qualquer um deles mostra todas as falas com o nome do canal:
+
+```
+05:18:32  Comunicação Davi: preciso de mais volume
+05:18:40  Comunicação Palco: tira o violão do retorno
+```
+
+- **O nome vem sozinho** da faixa do DAW (REAPER, Cubase, Studio One, Ableton Live, Logic e outros
+  que informam o nome da faixa ao plugin), na cor da faixa. Para usar outro nome, digite em
+  AVANÇADO › *Nome do canal*. Se o programa não informar e ninguém digitar, aparece "Canal 1",
+  "Canal 2"...
+- **Todos os canais** (embaixo da transcrição): ligado mostra a conversa inteira; desligado, só
+  aquele canal.
+- **LIMPAR** apaga a conversa de todos os canais. O histórico diário também sai com o nome de cada
+  canal.
+- Em computador mais fraco, os canais fazem **fila** para usar o Whisper (um de cada vez, cada um
+  com o processador inteiro), em vez de disputarem e atrasarem juntos.
+
+> Por que não pelo *receive* num canal matriz? Quando vários canais chegam por receive, o DAW soma
+> o áudio antes de entregar ao plugin: não dá para saber de qual canal veio cada voz. Com um
+> BandChatLIVE em cada canal, cada um sabe quem é.
+
 ## O que tem na tela
 
 - **Status**: CAPTANDO / FALA DETECTADA / PAUSADO, e o modelo em uso (`+ VAD` = detector de voz
@@ -65,7 +91,7 @@ Plug-ins > VST > Re-scan; Logic: basta reabrir).
 | Parciais | Texto enquanto a pessoa fala. Desligue em computador fraco. |
 | Vocabulário | Nomes e termos que ajudam o reconhecimento. Mantenha curto. |
 | Correções | Conserta palavras no texto final: `david => Davi ; in ear => in-ear` |
-| Nome do canal | Aparece antes de cada frase no histórico (útil com vários canais). |
+| Nome do canal | Nome mostrado antes das falas deste canal. Vazio = nome da faixa no DAW. |
 
 Se o computador não acompanhar a fala, o plugin primeiro desliga os parciais, depois troca
 para um modelo mais leve (no modo Automático) e, por último, entra no modo econômico. O aviso
@@ -109,6 +135,7 @@ Source/
   PluginEditor.*           janela do plugin
   UI/                      transcrição, janela separada, tema
   Engine/Transcriber.*     threads "ouvido" (VAD + segmentação) e "escriba" (Whisper)
+  Engine/Hub.*             conversa compartilhada entre os canais (instâncias) do processo
   Engine/Segmenter.*       separa as frases (nível + VAD, pré-roll, parciais)
   Engine/WhisperBackend.*  modelo compartilhado entre instâncias, VAD embutido
   Engine/TextFilter.*      alucinações, repetição, correções, palavras-chave
@@ -121,7 +148,8 @@ installer/
 tests/
   TavTests.cpp             motor: texto, VAD determinístico, segmentação (Whisper opcional)
   TavBench.cpp             benchmark: modelos x threads x janela (workflow bench.yml)
-  HostTest.cpp             carrega o VST3 como um DAW: taxas/blocos, estado, 4 instâncias, fluxo
+  HostTest.cpp             carrega o VST3 como um DAW: taxas/blocos, estado, 4 instâncias e
+                           dois canais com nome da faixa transcrevendo ao mesmo tempo
   checar-acentos.py        textos com acento sempre convertidos de UTF-8
   audio/teste.wav          falas + trecho de instrumento + fala longa
 ```

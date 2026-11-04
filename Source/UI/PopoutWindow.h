@@ -23,7 +23,8 @@ private:
         void timerCallback() override;
         TranscricaoProcessor& proc;
         PopoutWindow& window;
-        juce::ToggleButton pin { TranscricaoProcessor::u8 ("Sempre na frente") }, autoscroll { TranscricaoProcessor::u8 ("Rolagem") };
+        juce::ToggleButton pin { TranscricaoProcessor::u8 ("Sempre na frente") }, autoscroll { TranscricaoProcessor::u8 ("Rolagem") },
+                           allChannels { TranscricaoProcessor::u8 ("Todos os canais") };
         juce::Slider fontSize;
         juce::TextButton startStop, copy { "COPIAR" };
         TranscriptView view;
