@@ -159,7 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configurar
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DTAV_BUILD_TESTS=ON
+        run: cmake -S . -B build -A x64 -DTAV_BUILD_TESTS=ON   # usa o Visual Studio que o runner tiver
       - name: Compilar
         run: cmake --build build --config Release --target TranscricaoAoVivo_VST3 TranscricaoAoVivo_Standalone TavTests -- /m /v:minimal
       - name: Testes do motor

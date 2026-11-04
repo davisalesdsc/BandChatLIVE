@@ -35,9 +35,24 @@ bundle_pkg () {   # <arquivo_bundle> <destino> <id> <scripts|-> <saida>
   local root="$WORK/root-$id"
   mkdir -p "$root"
   ditto "$BUNDLES/$bundle" "$root/$bundle"
-  pkgbuild --analyze --root "$root" "$WORK/$id.plist" >/dev/null
-  /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$WORK/$id.plist"
-  /usr/libexec/PlistBuddy -c "Set :0:BundleIsVersionChecked false" "$WORK/$id.plist"
+  # configuração do componente escrita à mão (o "pkgbuild --analyze" nem
+  # sempre reconhece .vst3/.component como bundle e devolve lista vazia)
+  cat > "$WORK/$id.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+  <dict>
+    <key>RootRelativeBundlePath</key><string>$bundle</string>
+    <key>BundleIsRelocatable</key><false/>
+    <key>BundleIsVersionChecked</key><false/>
+    <key>BundleHasStrictIdentifier</key><false/>
+    <key>BundleOverwriteAction</key><string>upgrade</string>
+  </dict>
+</array>
+</plist>
+PLIST
+  plutil -lint "$WORK/$id.plist" >/dev/null
   local extra=()
   [ "$scripts" != "-" ] && extra=(--scripts "$scripts")
   pkgbuild --root "$root" --component-plist "$WORK/$id.plist" \

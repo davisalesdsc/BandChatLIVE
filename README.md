@@ -115,7 +115,7 @@ tests/
   audio/teste.wav          falas + trecho de instrumento + fala longa
 ```
 
-Compilar e testar (macOS: Xcode; Windows: Visual Studio 2022; CMake 3.22+):
+Compilar e testar (macOS: Xcode; Windows: Visual Studio 2022 ou mais novo; CMake 3.22+):
 
 ```bash
 cmake -S . -B build -DTAV_BUILD_TESTS=ON
