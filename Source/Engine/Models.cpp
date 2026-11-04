@@ -118,12 +118,14 @@ juce::File choose (Mode mode)
 
     if (mode == Mode::precise) return heaviest;
 
-    // automático: Apple Silicon (com GPU) aguenta o mais pesado; nos outros
-    // começa no mais pesado até "Equilibrado" e só sobe se não houver opção
+    // automático: Apple Silicon (com GPU) aguenta o mais pesado. Nos outros,
+    // até "Equilibrado"; com menos de 4 núcleos (ex.: Mac mini 2014, i7 de 2
+    // núcleos) só até "Rápido", senão as primeiras frases já saem atrasadas.
     if (isAppleSilicon()) return heaviest;
+    const int maxWeight = juce::SystemStats::getNumPhysicalCpus() < 4 ? 1 : 2;
     juce::File best;
     for (auto& f : list)
-        if (weight (f) <= 2) best = f;
+        if (weight (f) <= maxWeight) best = f;
     return best != juce::File() ? best : list.getFirst();
 }
 
