@@ -131,10 +131,10 @@ sem modelo.
 O GitHub Actions (`.github/workflows/build.yml`) faz tudo a cada push na `main`:
 compila macOS (arm64 e x86_64 juntados num binário universal), Windows e Linux; monta o `.pkg` e o
 `Setup.exe`; **instala de verdade** nos dois sistemas e confere (no Mac roda o `auval` da Apple no AU
-instalado). Os instaladores ficam na aba **Actions**, em *Artifacts*.
+instalado). Os instaladores também ficam na aba **Actions**, em *Artifacts*.
 
-Para publicar uma versão com página de download: atualize `VERSAO` e crie a tag
-(`git tag v0.2 && git push --tags`). Os dois instaladores aparecem em **Releases**.
+Com tudo passando, o CI também publica os dois instaladores em **Releases**, na versão escrita em
+`VERSAO` (a Release é atualizada a cada push). Para lançar uma versão nova, basta mudar o `VERSAO`.
 
 **Assinatura Apple (opcional):** com conta Apple Developer (US$ 99/ano), cadastre em
 *Settings > Secrets and variables > Actions*: `MACOS_CERT_P12_BASE64` (certificados "Developer ID

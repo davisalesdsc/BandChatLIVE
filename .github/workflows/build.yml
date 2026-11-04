@@ -244,22 +244,35 @@ jobs:
 
   # ---------------------------------------------------------------------------
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # push na main (ou tag v*) com tudo passando: cria/atualiza a Release da
+    # versão escrita em VERSAO. Versão nova = mudar o VERSAO.
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [ macos-pkg, windows, linux ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Versão
+        run: echo "VERSION=$(tr -d '[:space:]' < VERSAO)" >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
         with: { name: Instalador-macOS, path: dist }
       - uses: actions/download-artifact@v4
         with: { name: Instalador-Windows, path: dist }
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: BandChatLIVE ${{ env.VERSION }}
+          make_latest: true
+          overwrite_files: true
           files: dist/*
-          name: BandChatLIVE ${{ github.ref_name }}
           body: |
             **macOS** (Apple Silicon e Intel, macOS 11+): baixe o `.pkg` e dê dois cliques.
             **Windows** (10/11, 64 bits): baixe o `Setup.exe` e dê dois cliques.
 
             Instala os plugins VST3 e AU (Mac), o app sem DAW e os modelos de voz Rápido e Equilibrado.
+
+            Primeira vez (instalador ainda sem assinatura):
+            - macOS: se aparecer "desenvolvedor não identificado", vá em Ajustes do Sistema › Privacidade e Segurança › **Abrir Mesmo Assim**.
+            - Windows: em "O Windows protegeu o computador", clique em **Mais informações** › **Executar assim mesmo**.
