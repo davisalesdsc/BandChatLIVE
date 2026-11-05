@@ -34,6 +34,12 @@ namespace text
     juce::StringArray parseKeywords (const juce::String& spec);
 
     bool containsKeyword (const juce::String& s, const juce::StringArray& foldedKeywords);
+
+    /** Desfaz texto UTF-8 que algum programa leu na codificação antiga do
+        sistema ("Comunica√ß√£o" no Mac / "ComunicaÃ§Ã£o" no Windows ->
+        "Comunicação"). Hosts feitos com JUCE no Mac entregam assim o nome da
+        faixa. Texto normal volta igual. */
+    juce::String repairMisdecodedUtf8 (const juce::String& s);
 }
 
 } // namespace tav

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Engine/TextFilter.h"
 #include "Common/TranscriptLog.h"
 #include "UI/PopoutWindow.h"
 
@@ -235,7 +236,8 @@ void TranscricaoProcessor::updateTrackProperties (const TrackProperties& p)
 {
     {
         const juce::ScopedLock sl (trackLock);
-        trackName = p.name.value_or (juce::String()).trim();
+        // alguns hosts (feitos com JUCE, no Mac) entregam o nome em MacRoman
+        trackName = tav::text::repairMisdecodedUtf8 (p.name.value_or (juce::String()).trim());
         trackColour = 0;
         if (p.colourARGB.has_value())
         {

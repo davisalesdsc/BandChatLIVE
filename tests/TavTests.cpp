@@ -42,6 +42,12 @@ static void textTests()
     check (text::applyCorrections (u8 ("Davidson chegou"), corr) == u8 ("Davidson chegou"), "só palavra inteira");
     check (text::applyCorrections (u8 ("o VIOLÃO tá alto"), corr) == u8 ("o violão tá alto"), "ignora acento/maiúscula");
 
+    check (text::repairMisdecodedUtf8 (u8 ("Comunica√ß√£o Davi")) == u8 ("Comunicação Davi"), "nome em MacRoman consertado");
+    check (text::repairMisdecodedUtf8 (u8 ("ComunicaÃ§Ã£o Palco")) == u8 ("Comunicação Palco"), "nome em Windows-1252 consertado");
+    check (text::repairMisdecodedUtf8 (u8 ("Comunicação Palco")) == u8 ("Comunicação Palco"), "nome correto fica igual");
+    check (text::repairMisdecodedUtf8 (u8 ("Ação - Voz Principal")) == u8 ("Ação - Voz Principal"), "nome com acento fica igual");
+    check (text::repairMisdecodedUtf8 ("Davi") == "Davi", "nome sem acento fica igual");
+
     auto kw = text::parseKeywords (u8 ("fone, Violão , retorno"));
     check (text::containsKeyword (u8 ("abaixa o VIOLAO"), kw), "palavra-chave sem acento");
     check (! text::containsKeyword (u8 ("tudo certo"), kw), "sem palavra-chave");
