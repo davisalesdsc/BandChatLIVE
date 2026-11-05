@@ -143,6 +143,9 @@ int main (int argc, char* argv[])
     fm.addFormat (new juce::AudioUnitPluginFormat());
    #endif
     const juce::String path = juce::String::fromUTF8 (argv[1]);
+    // cada execução começa sem preferências salvas (antes de abrir qualquer canal:
+    // o plugin lê o arquivo ao abrir e o que está salvo no computador vale)
+    dataDir().getChildFile ("preferencias.xml").deleteFile();
 
     std::cout << "== carregar / formatos\n";
     auto p = load (fm, path, 48000.0, 512);
@@ -204,7 +207,6 @@ int main (int argc, char* argv[])
     std::cout << "== preferências globais (não somem ao reabrir)\n";
     {
         auto prefsFile = dataDir().getChildFile ("preferencias.xml");
-        prefsFile.deleteFile();
         auto a = load (fm, path, 48000.0, 512);
         juce::StringPairArray old;
         old.set ("correcoes", juce::String::fromUTF8 ("violao => violão"));   // salva só no projeto (até 0.5)
