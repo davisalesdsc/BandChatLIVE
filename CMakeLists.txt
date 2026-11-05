@@ -216,4 +216,7 @@ if(TAV_BUILD_TESTS)
         $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>)
     target_link_libraries(HostTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags)
+    if(APPLE)   # hospedar AU (o host de teste carrega o .component instalado)
+        target_link_libraries(HostTest PRIVATE "-framework CoreAudioKit" "-framework AudioUnit")
+    endif()
 endif()
