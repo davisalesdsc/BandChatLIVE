@@ -43,7 +43,7 @@ jobs:
           sysctl -n machdep.cpu.brand_string || true
           cmake -S . -B build -G Xcode -DTAV_OSX_ARCH=${{ matrix.arch }} -DTAV_BUILD_TESTS=ON
       - name: Compilar
-        run: cmake --build build --config $BUILD_TYPE --target BandChatLIVE_VST3 BandChatLIVE_AU BandChatLIVE_Standalone TavTests -- -quiet
+        run: cmake --build build --config $BUILD_TYPE --target BandChatLIVE_VST3 BandChatLIVE_AU BandChatLIVE_Standalone TavTests HostTest -- -quiet
 
       - name: Modelos de voz (cache)
         uses: actions/cache@v4
@@ -130,6 +130,13 @@ jobs:
           killall -9 AudioComponentRegistrar 2>/dev/null || true
           sleep 3
           auval -v aufx BcLv DvSl          # validação oficial da Apple, no AU já instalado
+
+      - name: Host de teste com o AU e o VST3 instalados (áudio entrando, frases, canais)
+        run: |
+          rm -rf ~/Library/Application\ Support/BandChatLIVE/Logs
+          TAV_DEMO=1 ./build/HostTest_artefacts/$BUILD_TYPE/HostTest "/Library/Audio/Plug-Ins/Components/BandChatLIVE.component" tests/audio/teste.wav
+          TAV_DEMO=1 ./build/HostTest_artefacts/$BUILD_TYPE/HostTest "/Library/Audio/Plug-Ins/VST3/BandChatLIVE.vst3" tests/audio/teste.wav
+          echo "--- log do motor"; tail -15 ~/Library/Application\ Support/BandChatLIVE/transcritor.log || true
 
       - uses: actions/upload-artifact@v4
         with:

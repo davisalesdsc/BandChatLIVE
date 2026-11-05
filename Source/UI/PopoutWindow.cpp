@@ -76,6 +76,7 @@ void PopoutWindow::Body::timerCallback()
     const auto st = proc.getTranscriber().getState();
     if (! on)                                       { status = u8 ("pausado");         statusColour = theme::textMuted; }
     else if (! proc.isReceivingAudio())             { status = u8 ("sem áudio"); statusColour = theme::warn; }
+    else if (proc.getAudioStatus() == TranscricaoProcessor::AudioStatus::silence) { status = u8 ("sem sinal"); statusColour = theme::warn; }
     else if (st == tav::Transcriber::State::noModel) { status = u8 ("sem modelo");      statusColour = theme::warn; }
     else if (st == tav::Transcriber::State::loading) { status = u8 ("carregando...");   statusColour = theme::warn; }
     else if (st == tav::Transcriber::State::error)   { status = u8 ("erro");            statusColour = theme::error; }

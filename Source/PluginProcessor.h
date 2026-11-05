@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Common/GlobalPrefs.h"
+#include "Engine/DirectInput.h"
+#include "Engine/Resampler16k.h"
 #include "Engine/Transcriber.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -13,7 +16,9 @@ class PopoutWindow;
 class TranscricaoProcessor : public juce::AudioProcessor,
                              private juce::AudioProcessorValueTreeState::Listener,
                              private juce::ValueTree::Listener,
-                             private juce::AsyncUpdater
+                             private juce::ChangeListener,
+                             private juce::AsyncUpdater,
+                             private juce::Timer
 {
 public:
     TranscricaoProcessor();
@@ -52,15 +57,33 @@ public:
     tav::Transcriber& getTranscriber() noexcept { return transcriber; }
     juce::AudioProcessorValueTreeState& getParams() noexcept { return params; }
 
-    /** Preferências que não são automatizáveis (texto, tamanho da fonte...).
-        Ficam salvas na sessão do host junto com os parâmetros. */
+    /** Preferências que não são automatizáveis. As globais (correções,
+        vocabulário, palavras, modo, idioma, fonte...) ficam no computador e
+        valem para todos os canais, projetos e o app (tav::GlobalPrefs); as
+        outras (nome do canal, tamanho da janela) ficam na sessão do host. */
     juce::ValueTree getPrefs() { return params.state.getOrCreateChildWithName ("prefs", nullptr); }
     juce::var  getPref (const juce::Identifier& id, const juce::var& def);
     void       setPref (const juce::Identifier& id, const juce::var& v);
 
-    float getInputLevelDb() const noexcept { return levelDb.load(); }
+    float getInputLevelDb() const noexcept
+    {
+        return directActive.load() && direct != nullptr ? direct->getLevelDb() : levelDb.load();
+    }
     /** true se o host chamou processBlock há pouco (a faixa está "viva"). */
     bool  isReceivingAudio() const noexcept;
+
+    /** Fonte do áudio: a faixa do DAW (padrão) ou direto da placa de som. */
+    bool isDirectMode() const;
+    bool isDirectActive() const noexcept     { return directActive.load(); }
+    juce::String getDirectError() const      { return directError; }
+    juce::String getDirectDescription() const { return direct != nullptr && directActive.load() ? direct->getDescription() : juce::String(); }
+    /** Placas e canais para a lista do AVANÇADO (abre um leitor temporário se preciso). */
+    juce::StringArray listInputDevices();
+    juce::StringArray listInputChannels (const juce::String& device);
+
+    /** O que está chegando do host, para a mensagem certa na tela e no log. */
+    enum class AudioStatus { notCalled, noInputChannels, silence, ok };
+    AudioStatus getAudioStatus() const noexcept;
 
     //-- janela pop-out (fica aberta mesmo com a janela do plugin fechada) ----
     void togglePopout();
@@ -76,21 +99,33 @@ private:
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void pushSettings();
     void handleAsyncUpdate() override { pushSettings(); }
+    void changeListenerCallback (juce::ChangeBroadcaster*) override { pushSettings(); }
+    void timerCallback() override;             // diagnóstico do áudio (log)
 
     juce::AudioProcessorValueTreeState params;
     tav::Transcriber transcriber;
 
-    // reamostragem (só na thread de áudio)
-    double inRate = 48000.0, step = 3.0, phase = 0.0;
-    float  prevSample = 0.0f;
-    juce::IIRFilter aa1, aa2;
-    std::vector<float> mono, out16;
+    // reamostragem da faixa (só na thread de áudio)
+    tav::Resampler16k resampler;
+    std::vector<float> mono;
+    std::atomic<float>* muteParam = nullptr;
+
+    // entrada direta da placa (alternativa à faixa do DAW)
+    void applyInputSource();
+    void ensureDirect();
+    std::unique_ptr<tav::DirectInput> direct;
+    std::atomic<bool> directActive { false };
+    juce::String directKey, directError;
 
     std::atomic<float> levelDb { -100.0f };
-    std::atomic<juce::int64> lastBlockMs { 0 };
+    std::atomic<juce::int64> lastBlockMs { 0 }, lastSignalMs { 0 };
+    std::atomic<int> lastInputChannels { -1 }, lastBlockSize { 0 };
+    AudioStatus loggedStatus = AudioStatus::ok;
+    bool loggedHost = false;
     std::atomic<float>* transcribeParam = nullptr;
 
     std::unique_ptr<PopoutWindow> popout;
+    std::shared_ptr<tav::GlobalPrefs> globalPrefs;
 
     juce::CriticalSection trackLock;
     juce::String trackName;

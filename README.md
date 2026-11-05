@@ -39,6 +39,18 @@ Plug-ins > VST > Re-scan; Logic: basta reabrir).
 **Desinstalar:** no Mac, dê dois cliques em *Desinstalar BandChatLIVE* na pasta
 `/Library/Application Support/BandChatLIVE`. No Windows, use Configurações > Aplicativos.
 
+## De onde vem o áudio (AVANÇADO › Entrada)
+
+- **Faixa do DAW** (padrão): o plugin escuta o áudio que passa pela faixa. Para isso o programa
+  precisa estar processando a faixa: no **Logic**, ligue *Ajustes › Áudio › Monitoramento de
+  software* e o botão **I** da faixa de áudio; nos outros, o monitoramento de entrada da faixa.
+- **Direto da placa de som**: o plugin lê a entrada da interface por conta própria (escolha a placa
+  e a entrada). **Não depende de monitoramento nem de gravação armada**, nem de o DAW processar a
+  faixa. No macOS funciona com o DAW aberto; no Windows com driver ASIO o DAW pode ocupar a placa
+  sozinho (o plugin avisa).
+- **Silenciar saída**: continua transcrevendo, mas não devolve o áudio para a faixa (você não se
+  ouve no retorno).
+
 ## Vários canais de comunicação
 
 Coloque o **BandChatLIVE em cada canal de comunicação** (ex.: "Comunicação Palco", "Comunicação
@@ -65,6 +77,13 @@ de qualquer um deles mostra todas as falas com o nome do canal:
 > o áudio antes de entregar ao plugin: não dá para saber de qual canal veio cada voz. Com um
 > BandChatLIVE em cada canal, cada um sabe quem é.
 
+## O que fica guardado
+
+**Correções, Vocabulário, Palavras destacadas, Modo, Idioma e tamanho do texto** ficam guardados no
+computador (`preferencias.xml` na pasta do BandChatLIVE) e valem para todos os canais, todos os
+projetos e o app, mesmo depois de fechar e abrir. O **nome do canal** e a **entrada** ficam em cada
+canal, salvos no projeto.
+
 ## O que tem na tela
 
 - **Status**: CAPTANDO / FALA DETECTADA / PAUSADO, e o modelo em uso (`+ VAD` = detector de voz
@@ -89,6 +108,8 @@ de qualquer um deles mostra todas as falas com o nome do canal:
 | Sensibilidade | Detector de voz: mais alto pega fala mais baixa, mas deixa passar mais coisa. |
 | Fim de frase | Silêncio que fecha a frase (700 ms). Para quem fala pausado, aumente. |
 | Parciais | Texto enquanto a pessoa fala. Desligue em computador fraco. |
+| Silenciar saída | Transcreve sem devolver o áudio para a faixa (você não se ouve). |
+| Entrada | Faixa do DAW ou direto da placa de som (veja acima). |
 | Vocabulário | Nomes e termos que ajudam o reconhecimento. Mantenha curto. |
 | Correções | Conserta palavras no texto final: `david => Davi ; in ear => in-ear` |
 | Nome do canal | Nome mostrado antes das falas deste canal. Vazio = nome da faixa no DAW. |
@@ -148,8 +169,9 @@ installer/
 tests/
   TavTests.cpp             motor: texto, VAD determinístico, segmentação (Whisper opcional)
   TavBench.cpp             benchmark: modelos x threads x janela (workflow bench.yml)
-  HostTest.cpp             carrega o VST3 como um DAW: taxas/blocos, estado, 4 instâncias e
-                           dois canais com nome da faixa transcrevendo ao mesmo tempo
+  HostTest.cpp             carrega o VST3/AU como um DAW: taxas/blocos, estado, preferências
+                           globais, silenciar, entrada direta, 4 instâncias e dois canais com
+                           nome da faixa transcrevendo ao mesmo tempo (no Mac: AU e VST3 instalados)
   checar-acentos.py        textos com acento sempre convertidos de UTF-8
   audio/teste.wav          falas + trecho de instrumento + fala longa
 ```

@@ -170,6 +170,8 @@ target_sources(BandChatLIVE PRIVATE
     Source/PluginEditor.cpp
     Source/UI/TranscriptView.cpp
     Source/UI/PopoutWindow.cpp
+    Source/Common/GlobalPrefs.cpp
+    Source/Engine/DirectInput.cpp
     ${TAV_ENGINE_SOURCES})
 
 target_include_directories(BandChatLIVE PRIVATE Source)
@@ -210,7 +212,8 @@ if(TAV_BUILD_TESTS)
     # host de teste: carrega o VST3 compilado como um DAW
     juce_add_console_app(HostTest PRODUCT_NAME "HostTest")
     target_sources(HostTest PRIVATE tests/HostTest.cpp)
-    target_compile_definitions(HostTest PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_compile_definitions(HostTest PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        $<$<PLATFORM_ID:Darwin>:JUCE_PLUGINHOST_AU=1>)
     target_link_libraries(HostTest PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags)
 endif()

@@ -50,7 +50,13 @@ private:
     juce::ComboBox mode, language;
     juce::Slider gate, sens, hold;
     juce::Label gateLbl, sensLbl, holdLbl;
-    juce::ToggleButton partials { "Parciais" }, writeLog { TranscricaoProcessor::u8 ("Gravar histórico") };
+    juce::ToggleButton partials { "Parciais" }, writeLog { TranscricaoProcessor::u8 ("Gravar histórico") },
+                       muteOut { TranscricaoProcessor::u8 ("Silenciar saída") };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteAtt;
+    // fonte do áudio: faixa do DAW ou direto da placa
+    juce::Label inputLabel, inputInfo;
+    juce::ComboBox inputSource, inputDevice, inputChannel;
+    void refreshDeviceLists();
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateAtt, sensAtt, holdAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> partialsAtt;
     juce::OwnedArray<juce::TextButton> downloadBtns;

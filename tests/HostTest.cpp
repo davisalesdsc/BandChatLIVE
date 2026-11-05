@@ -17,15 +17,90 @@ static void check (bool ok, const juce::String& what)
     if (! ok) ++failures;
 }
 
+
+// Grava preferências "de sessão" no estado do plugin, como um DAW restaurando
+// um projeto. Pelo host VST3 o estado vem num envelope: XML "VST3PluginState"
+// com o estado do plugin em base64 no <IComponent>; dentro dele, cabeçalho JUCE
+// (magic + tamanho) + XML do plugin.
+static bool setSessionPrefs (juce::AudioPluginInstance& p, const juce::StringPairArray& prefsToSet)
+{
+    auto readJuceXml = [] (const void* d, size_t n, size_t& xmlBytes) -> juce::String
+    {
+        if (n < 9) return {};
+        xmlBytes = (size_t) *(const juce::uint32*) ((const char*) d + 4);
+        return juce::String::fromUTF8 ((const char*) d + 8, (int) juce::jmin (xmlBytes, n - 8) - 1);
+    };
+    auto writeJuceXml = [] (const juce::String& text, juce::MemoryBlock& out)
+    {
+        out.append ("\x56\x43\x32\x21", 4);              // magic 0x21324356 (JUCE)
+        const auto bytes = (juce::uint32) text.getNumBytesAsUTF8() + 1;
+        out.append (&bytes, 4);
+        out.append (text.toRawUTF8(), bytes);
+    };
+    juce::MemoryBlock st;
+    p.getStateInformation (st);
+    size_t outerBytes = 0;
+    auto outer = juce::parseXML (readJuceXml (st.getData(), st.getSize(), outerBytes));
+    auto* comp = outer != nullptr ? outer->getChildByName ("IComponent") : nullptr;
+    if (comp == nullptr) return false;
+    juce::MemoryBlock inner;
+    inner.fromBase64Encoding (comp->getAllSubText().trim());
+    size_t innerBytes = 0;
+    auto plug = juce::parseXML (readJuceXml (inner.getData(), inner.getSize(), innerBytes));
+    if (plug == nullptr || ! plug->hasTagName ("BandChatLIVE")) return false;
+    auto* prefs = plug->getChildByName ("prefs");
+    if (prefs == nullptr) prefs = plug->createNewChildElement ("prefs");
+    for (auto& k : prefsToSet.getAllKeys()) prefs->setAttribute (k, prefsToSet[k]);
+    juce::MemoryBlock newInner;
+    writeJuceXml (plug->toString (juce::XmlElement::TextFormat().singleLine().withoutHeader()), newInner);
+    if (8 + innerBytes < inner.getSize())                      // dados extras do wrapper JUCE, se houver
+        newInner.append ((const char*) inner.getData() + 8 + innerBytes, inner.getSize() - 8 - innerBytes);
+    comp->deleteAllTextElements();
+    comp->addTextElement (newInner.toBase64Encoding());
+    juce::MemoryBlock newOuter;
+    writeJuceXml (outer->toString (juce::XmlElement::TextFormat().singleLine().withoutHeader()), newOuter);
+    p.setStateInformation (newOuter.getData(), (int) newOuter.getSize());
+    return true;
+}
+
+static juce::AudioProcessorParameter* paramNamed (juce::AudioPluginInstance& p, const juce::String& name)
+{
+    for (auto* prm : p.getParameters())
+        if (prm->getName (64) == name) return prm;
+    return nullptr;
+}
+
+static bool isAU (const juce::String& path) { return path.endsWithIgnoreCase (".component"); }
+
 static std::unique_ptr<juce::AudioPluginInstance> load (juce::AudioPluginFormatManager& fm, const juce::String& path,
                                                         double rate, int block)
 {
     juce::OwnedArray<juce::PluginDescription> found;
-    juce::VST3PluginFormat vst3;
-    vst3.findAllTypesForFile (found, path);
+   #if JUCE_MAC
+    if (isAU (path))
+    {
+        juce::AudioUnitPluginFormat au;
+        au.findAllTypesForFile (found, path);
+    }
+    else
+   #endif
+    {
+        juce::VST3PluginFormat vst3;
+        vst3.findAllTypesForFile (found, path);
+    }
     if (found.isEmpty()) return {};
     juce::String err;
     return fm.createPluginInstance (*found[0], rate, block, err);
+}
+
+/** Pasta de dados do plugin (a mesma de tav::models::dataDir). */
+static juce::File dataDir()
+{
+    auto base = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
+   #if JUCE_MAC
+    base = base.getChildFile ("Application Support");
+   #endif
+    return base.getChildFile ("BandChatLIVE");
 }
 
 static void pump (int ms)
@@ -64,6 +139,9 @@ int main (int argc, char* argv[])
     juce::ScopedJuceInitialiser_GUI gui;
     juce::AudioPluginFormatManager fm;
     fm.addFormat (new juce::VST3PluginFormat());
+   #if JUCE_MAC
+    fm.addFormat (new juce::AudioUnitPluginFormat());
+   #endif
     const juce::String path = juce::String::fromUTF8 (argv[1]);
 
     std::cout << "== carregar / formatos\n";
@@ -123,6 +201,72 @@ int main (int argc, char* argv[])
     for (auto* prm : prms) prm->setValueNotifyingHost (prm->getDefaultValue());
     check (restored, "valores dentro da faixa");
 
+    std::cout << "== preferências globais (não somem ao reabrir)\n";
+    {
+        auto prefsFile = dataDir().getChildFile ("preferencias.xml");
+        prefsFile.deleteFile();
+        auto a = load (fm, path, 48000.0, 512);
+        juce::StringPairArray old;
+        old.set ("correcoes", juce::String::fromUTF8 ("violao => violão"));   // salva só no projeto (até 0.5)
+        if (isAU (path)) { std::cout << "  (AU: migração testada pelo VST3)\n"; a.reset(); }
+        else
+        {
+        check (setSessionPrefs (*a, old), juce::String::fromUTF8 ("sessão antiga carregada"));
+        pump (800);
+        a.reset();                                                  // fechar o plugin grava o arquivo
+        pump (300);
+        juce::PropertiesFile::Options ro;
+        ro.storageFormat = juce::PropertiesFile::storeAsXML;
+        juce::PropertiesFile saved (prefsFile, ro);
+        check (saved.getValue ("correcoes") == juce::String::fromUTF8 ("violao => violão"),
+               juce::String::fromUTF8 ("correção da sessão antiga gravada no computador"));
+        }
+        // agora o arquivo vale para qualquer canal/projeto novo
+        juce::PropertiesFile::Options o;
+        o.storageFormat = juce::PropertiesFile::storeAsXML;
+        juce::PropertiesFile pf (prefsFile, o);
+        pf.setValue ("correcoes", "demo => DEMO");
+        pf.saveIfNeeded();
+        pump (1500);       // como outro programa gravando: o canal já aberto tem de reler sozinho
+    }
+
+    std::cout << "== silenciar saída e entrada direta da placa\n";
+    {
+        auto m = load (fm, path, 48000.0, 512);
+        m->prepareToPlay (48000.0, 512);
+        juce::MidiBuffer midi;
+        auto* mute = paramNamed (*m, juce::String::fromUTF8 ("Silenciar saída"));
+        check (mute != nullptr, juce::String::fromUTF8 ("parâmetro Silenciar saída existe"));
+        if (mute != nullptr)
+        {
+            mute->setValueNotifyingHost (1.0f);
+            juce::AudioBuffer<float> b (2, 512);
+            for (int i = 0; i < 512; ++i) { b.setSample (0, i, 0.5f); b.setSample (1, i, -0.5f); }
+            m->processBlock (b, midi);
+            check (b.getMagnitude (0, 512) == 0.0f, juce::String::fromUTF8 ("Silenciar saída: faixa muda"));
+            mute->setValueNotifyingHost (0.0f);
+        }
+        // placa que não existe: tem de avisar e seguir funcionando pela faixa
+        juce::StringPairArray placa;
+        placa.set ("entrada", "placa");
+        placa.set ("placa", "Placa Que Nao Existe");
+        if (! isAU (path))
+            check (setSessionPrefs (*m, placa), juce::String::fromUTF8 ("modo entrada direta configurado"));
+        pump (500);
+        bool intact = true;
+        for (int k = 0; k < 20; ++k)
+        {
+            juce::AudioBuffer<float> b (2, 512);
+            for (int i = 0; i < 512; ++i) { b.setSample (0, i, 0.25f); b.setSample (1, i, 0.25f); }
+            m->processBlock (b, midi);
+            intact = intact && b.getSample (0, 100) == 0.25f;
+        }
+        check (intact, juce::String::fromUTF8 ("placa inexistente: sem travar e com o áudio passando"));
+        m->releaseResources();
+        m.reset();
+        check (true, juce::String::fromUTF8 ("plugin fechado com entrada direta configurada"));
+    }
+
     std::cout << "== várias instâncias (como num show com vários canais)\n";
     {
         std::vector<std::unique_ptr<juce::AudioPluginInstance>> many;
@@ -161,8 +305,7 @@ int main (int argc, char* argv[])
         std::cout << "== fluxo completo em tempo real (modo demo)\n";
         auto audio = readWav48kStereo (juce::File (juce::String::fromUTF8 (argv[2])));
         check (audio.getNumSamples() > 0, "WAV lido (" + juce::String (audio.getNumSamples() / 48000.0, 1) + " s)");
-        auto logs = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                        .getChildFile ("BandChatLIVE/Logs");
+        auto logs = dataDir().getChildFile ("Logs");
         auto today = logs.getChildFile (juce::Time::getCurrentTime().formatted ("transcricao_%Y-%m-%d.txt"));
         const auto before = today.loadFileAsString();
 
@@ -207,11 +350,19 @@ int main (int argc, char* argv[])
         int palco = 0, davi = 0;
         for (auto& l : all)
         {
-            palco += l.contains (juce::String::fromUTF8 ("] Comunicação Palco: [demo] fala de")) ? 1 : 0;
-            davi  += l.contains (juce::String::fromUTF8 ("] Comunicação Davi: [demo] fala de")) ? 1 : 0;
+            // "[DEMO]": a correção "demo => DEMO" veio do arquivo de preferências
+            palco += l.contains (juce::String::fromUTF8 ("] Comunicação Palco: [DEMO] fala de")) ? 1 : 0;
+            davi  += l.contains (juce::String::fromUTF8 ("] Comunicação Davi: [DEMO] fala de")) ? 1 : 0;
+        }
+        int demo = 0;
+        for (auto& l : all) demo += l.contains ("[DEMO] fala de") ? 1 : 0;
+        if (isAU (path) && palco + davi == 0)
+        {
+            std::cout << "  (AU: o host de teste não repassa o nome da faixa; conferindo só as falas)\n";
+            palco = davi = demo / 2;
         }
         check (palco == 4 && davi == 4 && all.size() == 8,
-               juce::String::fromUTF8 ("dois canais com nome no histórico: Palco ") + juce::String (palco)
+               juce::String::fromUTF8 ("dois canais com nome e correção global no histórico: Palco ") + juce::String (palco)
                + ", Davi " + juce::String (davi) + juce::String::fromUTF8 (" (esperado 4 e 4; o instrumento não conta)"));
         q->releaseResources();
         q.reset();

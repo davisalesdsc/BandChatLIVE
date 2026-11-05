@@ -3,7 +3,7 @@
 
 static juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 static constexpr int kHeaderH = 64;
-static constexpr int kAdvH = 372;        // altura do conteúdo do painel avançado
+static constexpr int kAdvH = 438;        // altura do conteúdo do painel avançado
 static constexpr int kMinTranscriptH = 150;
 
 TranscricaoEditor::TranscricaoEditor (TranscricaoProcessor& p)
@@ -95,6 +95,44 @@ TranscricaoEditor::TranscricaoEditor (TranscricaoProcessor& p)
     writeLog.onClick = [this] { proc.setPref ("log", writeLog.getToggleState()); };
     writeLog.setTooltip (u8 ("Grava as frases num .txt por dia (botão ABRIR LOGS)."));
     advPanel.addAndMakeVisible (writeLog);
+    muteAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (ap, "silenciar", muteOut);
+    muteOut.setTooltip (u8 ("Continua transcrevendo, mas não devolve o áudio para a faixa: você não se ouve."));
+    advPanel.addAndMakeVisible (muteOut);
+
+    // ---- fonte do áudio --------------------------------------------------------
+    label (inputLabel, u8 ("Entrada"));
+    inputSource.addItem (u8 ("Faixa do DAW"), 1);
+    inputSource.addItem (u8 ("Direto da placa de som"), 2);
+    inputSource.setTooltip (u8 ("Faixa do DAW: o plugin escuta o áudio da faixa (o DAW precisa estar processando a faixa).\n"
+                                "Direto da placa: o plugin lê a entrada da placa por conta própria. Não depende de "
+                                "monitoramento nem de gravação armada; no Windows com ASIO a placa pode estar ocupada pelo DAW."));
+    inputSource.setSelectedId (proc.getPref ("entrada", "daw").toString() == "placa" ? 2 : 1, juce::dontSendNotification);
+    inputSource.onChange = [this]
+    {
+        if (inputSource.getSelectedId() == 2) refreshDeviceLists();
+        proc.setPref ("entrada", inputSource.getSelectedId() == 2 ? "placa" : "daw");
+        resized();
+    };
+    inputDevice.setTextWhenNothingSelected (u8 ("escolha a placa"));
+    inputDevice.onChange = [this]
+    {
+        proc.setPref ("placaCanal", 0);
+        proc.setPref ("placa", inputDevice.getText());
+        refreshDeviceLists();
+    };
+    inputChannel.setTextWhenNothingSelected (u8 ("entrada"));
+    inputChannel.onChange = [this] { proc.setPref ("placaCanal", inputChannel.getSelectedId() - 1); };
+    inputInfo.setFont (theme::font (12.0f));
+    inputInfo.setColour (juce::Label::textColourId, theme::textMuted);
+    for (auto* c : { (juce::Component*) &inputSource, (juce::Component*) &inputDevice,
+                     (juce::Component*) &inputChannel, (juce::Component*) &inputInfo })
+        advPanel.addAndMakeVisible (c);
+    if (juce::JUCEApplicationBase::isStandaloneApp())    // o app já lê a placa (Options)
+        for (auto* c : { (juce::Component*) &inputLabel, (juce::Component*) &inputSource, (juce::Component*) &inputDevice,
+                         (juce::Component*) &inputChannel, (juce::Component*) &inputInfo })
+            c->setVisible (false);
+    else if (inputSource.getSelectedId() == 2)
+        refreshDeviceLists();
 
     int n = 0;
     const auto* cat = tav::models::catalogue (n);
@@ -191,6 +229,24 @@ void TranscricaoEditor::setAdvancedVisible (bool show)
     repaint();
 }
 
+void TranscricaoEditor::refreshDeviceLists()
+{
+    const auto current = proc.getPref ("placa", "").toString();
+    const auto devices = proc.listInputDevices();
+    inputDevice.clear (juce::dontSendNotification);
+    for (int i = 0; i < devices.size(); ++i) inputDevice.addItem (devices[i], i + 1);
+    if (devices.contains (current)) inputDevice.setText (current, juce::dontSendNotification);
+
+    inputChannel.clear (juce::dontSendNotification);
+    if (current.isNotEmpty())
+    {
+        const auto chans = proc.listInputChannels (current);
+        for (int i = 0; i < chans.size(); ++i)
+            inputChannel.addItem (juce::String (i + 1) + " - " + chans[i], i + 1);
+        inputChannel.setSelectedId ((int) proc.getPref ("placaCanal", 0) + 1, juce::dontSendNotification);
+    }
+}
+
 void TranscricaoEditor::refreshModelInfo()
 {
     juce::StringArray names;
@@ -210,10 +266,14 @@ void TranscricaoEditor::timerCallback()
     mainBtn.getProperties().set ("primary", ! on);
     mainBtn.repaint();
 
-    if (! on)                          { capText = u8 ("PAUSADO");           capColour = theme::textMuted; }
-    else if (! proc.isReceivingAudio()) { capText = u8 ("SEM ÁUDIO");         capColour = theme::warn; }
-    else if (tr.isSpeaking())          { capText = u8 ("FALA DETECTADA");    capColour = theme::accentHv; }
-    else                               { capText = u8 ("CAPTANDO");          capColour = theme::ok; }
+    using A = TranscricaoProcessor::AudioStatus;
+    const auto audio = proc.getAudioStatus();
+    if (! on)                               { capText = u8 ("PAUSADO");        capColour = theme::textMuted; }
+    else if (audio == A::notCalled
+          || audio == A::noInputChannels)   { capText = u8 ("SEM ÁUDIO");      capColour = theme::warn; }
+    else if (tr.isSpeaking())               { capText = u8 ("FALA DETECTADA"); capColour = theme::accentHv; }
+    else if (audio == A::silence)           { capText = u8 ("SEM SINAL");      capColour = theme::warn; }
+    else                                    { capText = u8 ("CAPTANDO");       capColour = theme::ok; }
 
     using S = tav::Transcriber::State;
     const auto st = tr.getState();
@@ -230,14 +290,39 @@ void TranscricaoEditor::timerCallback()
 
     msgText = tr.getMessage();
     msgColour = st == S::error ? theme::error : theme::warn;
-    if (msgText.isEmpty() && on && ! proc.isReceivingAudio())
-        msgText = juce::JUCEApplicationBase::isStandaloneApp()
-                    ? u8 ("Nenhum áudio chegando: escolha o microfone em Options > Audio Settings.")
-                    : u8 ("O host não está mandando áudio: ligue o monitoramento de entrada da faixa.");
+    if (msgText.isEmpty() && on)
+    {
+        const bool app = juce::JUCEApplicationBase::isStandaloneApp();
+        const bool logic = juce::PluginHostType().isLogic() || juce::PluginHostType().isMainStage();
+        if (proc.isDirectMode() && ! proc.isDirectActive())
+            msgText = proc.getDirectError();
+        else if (proc.isDirectMode() && audio == A::notCalled)
+            msgText = u8 ("A placa de som não está mandando áudio: confira se ela está conectada.");
+        else if (audio == A::notCalled)
+            msgText = app   ? u8 ("Nenhum áudio chegando: escolha o microfone em Options > Audio Settings.")
+                    : logic ? u8 ("O Logic não está processando esta faixa: em Ajustes > Áudio, ligue "
+                                  "\"Monitoramento de software\" e o botão I da faixa. Ou, sem depender disso: "
+                                  "AVANÇADO > Entrada > Direto da placa de som.")
+                            : u8 ("O programa não está processando esta faixa: ligue o monitoramento de entrada dela, "
+                                  "ou use AVANÇADO > Entrada > Direto da placa de som.");
+        else if (audio == A::noInputChannels)
+            msgText = u8 ("O plugin está sem entrada de áudio: use-o como efeito de áudio numa faixa de áudio "
+                          "(não de instrumento).");
+        else if (audio == A::silence)
+            msgText = logic ? u8 ("Chegando só silêncio: confira a entrada da faixa (o microfone certo) e o "
+                                  "\"Monitoramento de software\" em Ajustes > Áudio.")
+                            : u8 ("Chegando só silêncio: confira se a entrada da faixa é o microfone certo.");
+    }
     if (msgText.isEmpty() && tr.getDelaySeconds() > 6.0f)
         msgText = u8 ("Transcrição atrasada (") + juce::String (tr.getDelaySeconds(), 0) + u8 (" s). O plugin vai aliviar sozinho.");
 
     meterDb = proc.getInputLevelDb();
+
+    if (proc.isDirectMode())
+        inputInfo.setText (proc.isDirectActive() ? u8 ("Lendo direto: ") + proc.getDirectDescription()
+                                                 : proc.getDirectError(), juce::dontSendNotification);
+    else
+        inputInfo.setText (u8 ("O plugin escuta o áudio que passa pela faixa."), juce::dontSendNotification);
 
     const auto chName = tr.getChannelName();
     const int nCh = tr.getHub().getNumSources();
@@ -427,8 +512,27 @@ void TranscricaoEditor::layoutAdvanced (juce::Rectangle<int> r)
         pair.first->setBounds (col);
         a.removeFromLeft (6);
     }
-    partials.setBounds (a.removeFromTop (30));
-    writeLog.setBounds (a.removeFromTop (30));
+    partials.setBounds (a.removeFromTop (28));
+    writeLog.setBounds (a.removeFromTop (28));
+    muteOut.setBounds (a.removeFromTop (28));
+
+    // entrada: faixa do DAW ou direto da placa (placa + canal só no modo placa)
+    a = row (26);
+    inputLabel.setBounds (a.removeFromLeft (labelW));
+    const bool placa = inputSource.getSelectedId() == 2;
+    inputSource.setBounds (placa ? a.removeFromLeft (a.getWidth() / 3) : a);
+    if (placa)
+    {
+        a.removeFromLeft (6);
+        inputChannel.setBounds (a.removeFromRight (juce::jmin (130, a.getWidth() / 3)));
+        a.removeFromRight (6);
+        inputDevice.setBounds (a);
+    }
+    inputDevice.setVisible (placa && inputSource.isVisible());
+    inputChannel.setVisible (placa && inputSource.isVisible());
+    a = row (20);
+    a.removeFromLeft (labelW);
+    inputInfo.setBounds (a);
 
     a = row (26);
     vocabLabel.setBounds (a.removeFromLeft (labelW));

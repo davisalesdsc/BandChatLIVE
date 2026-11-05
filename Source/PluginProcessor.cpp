@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Common/TranscriptLog.h"
 #include "UI/PopoutWindow.h"
 
 using APVTS = juce::AudioProcessorValueTreeState;
@@ -7,7 +8,7 @@ using APVTS = juce::AudioProcessorValueTreeState;
 namespace ids
 {
     static const juce::String transcribe = "transcrever", gate = "gate", vadsens = "vadsens",
-                              hold = "fimfrase", partials = "parciais";
+                              hold = "fimfrase", partials = "parciais", mute = "silenciar";
 }
 
 /** No app Standalone o plugin só ESCUTA o microfone: sem saída, não há risco
@@ -26,7 +27,11 @@ TranscricaoProcessor::TranscricaoProcessor()
     : AudioProcessor (makeBuses()),
       params (*this, nullptr, "BandChatLIVE", createLayout())
 {
+    globalPrefs = tav::GlobalPrefs::get();
+    globalPrefs->addChangeListener (this);
+    startTimer (1000);
     transcribeParam = params.getRawParameterValue (ids::transcribe);
+    muteParam       = params.getRawParameterValue (ids::mute);
     for (auto* id : { &ids::gate, &ids::vadsens, &ids::hold, &ids::partials })
         params.addParameterListener (*id, this);
     params.state.addListener (this);
@@ -35,7 +40,11 @@ TranscricaoProcessor::TranscricaoProcessor()
 
 TranscricaoProcessor::~TranscricaoProcessor()
 {
+    stopTimer();
+    direct.reset();                         // antes do motor: o callback da placa escreve nele
     cancelPendingUpdate();
+    globalPrefs->removeChangeListener (this);
+    globalPrefs->flush();
     params.state.removeListener (this);
     closePopout();
 }
@@ -52,18 +61,29 @@ APVTS::ParameterLayout TranscricaoProcessor::createLayout()
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { ids::hold, 1 }, "Fim de frase",
               NormalisableRange<float> (300.0f, 2000.0f, 10.0f), 700.0f, AudioParameterFloatAttributes().withLabel ("ms")));
     l.add (std::make_unique<AudioParameterBool>  (ParameterID { ids::partials, 1 }, "Parciais", tav::models::partialsByDefault()));
+    l.add (std::make_unique<AudioParameterBool>  (ParameterID { ids::mute, 1 }, u8 ("Silenciar saída"), false));
     return l;
 }
 
 juce::var TranscricaoProcessor::getPref (const juce::Identifier& id, const juce::var& def)
 {
     auto p = getPrefs();
+    if (tav::GlobalPrefs::isGlobal (id))
+    {
+        if (globalPrefs->has (id)) return globalPrefs->getValue (id, def);
+        // migração: quem já tinha digitado na sessão (versões até 0.5) não perde
+        if (p.hasProperty (id)) { globalPrefs->setValue (id, p.getProperty (id)); return p.getProperty (id); }
+        return def;
+    }
     return p.hasProperty (id) ? p.getProperty (id) : def;
 }
 
 void TranscricaoProcessor::setPref (const juce::Identifier& id, const juce::var& v)
 {
-    getPrefs().setProperty (id, v, nullptr);
+    if (tav::GlobalPrefs::isGlobal (id))
+        globalPrefs->setValue (id, v);       // avisa todos os canais (changeListenerCallback)
+    else
+        getPrefs().setProperty (id, v, nullptr);
 }
 
 void TranscricaoProcessor::pushSettings()
@@ -86,6 +106,60 @@ void TranscricaoProcessor::pushSettings()
     }
     s.writeLog       = (bool) getPref ("log", true);
     transcriber.setSettings (s);
+    applyInputSource();
+}
+
+bool TranscricaoProcessor::isDirectMode() const
+{
+    if (juce::JUCEApplicationBase::isStandaloneApp()) return false;     // o app já lê a placa
+    auto& self = const_cast<TranscricaoProcessor&> (*this);
+    return self.getPref ("entrada", "daw").toString() == "placa";
+}
+
+void TranscricaoProcessor::ensureDirect()
+{
+    if (direct != nullptr) return;
+    direct = std::make_unique<tav::DirectInput> ([this] (const float* x, int n)
+    {
+        // thread da placa: o mesmo papel do processBlock quando o áudio vem da faixa
+        const bool on = transcribeParam->load() > 0.5f;
+        transcriber.setActive (on);
+        if (on) transcriber.pushAudio (x, n);
+    });
+}
+
+void TranscricaoProcessor::applyInputSource()
+{
+    if (! isDirectMode())
+    {
+        if (direct != nullptr) { direct->close(); directActive.store (false); }
+        directKey.clear();
+        directError.clear();
+        return;
+    }
+    const auto device  = getPref ("placa", "").toString();
+    const int  channel = (int) getPref ("placaCanal", 0);
+    const auto key = device + "|" + juce::String (channel);
+    if (key == directKey) return;                 // já está assim
+    directKey = key;
+
+    ensureDirect();
+
+    directActive.store (false);
+    directError = device.isEmpty() ? u8 ("Escolha a placa e a entrada em AVANÇADO.") : direct->open (device, channel);
+    directActive.store (directError.isEmpty());
+}
+
+juce::StringArray TranscricaoProcessor::listInputDevices()
+{
+    ensureDirect();
+    return direct->getDeviceNames();
+}
+
+juce::StringArray TranscricaoProcessor::listInputChannels (const juce::String& device)
+{
+    listInputDevices();
+    return direct->getChannelNames (device);
 }
 
 void TranscricaoProcessor::parameterChanged (const juce::String&, float)
@@ -103,23 +177,16 @@ bool TranscricaoProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 {
     const auto in = l.getMainInputChannelSet(), out = l.getMainOutputChannelSet();
     const bool inOk = in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
-    if (out.isDisabled()) return inOk;          // Standalone: só entrada
+    if (out.isDisabled())                       // só entrada: SÓ no app (nos hosts, entrada = saída)
+        return inOk && juce::PluginHostType::getPluginLoadedAs() == juce::AudioProcessor::wrapperType_Standalone;
     return inOk && in == out;
 }
 
 void TranscricaoProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    inRate = sampleRate > 0 ? sampleRate : 48000.0;
-    step = inRate / 16000.0;
-    phase = 0.0;
-    prevSample = 0.0f;
-    // anti-alias: 2 passa-baixas de 2ª ordem em 7 kHz antes de descer para 16 kHz
-    const auto c = juce::IIRCoefficients::makeLowPass (inRate, juce::jmin (7000.0, inRate * 0.45), 0.707);
-    aa1.setCoefficients (c); aa1.reset();
-    aa2.setCoefficients (c); aa2.reset();
     const int maxBlock = juce::jmax (samplesPerBlock, 4096) * 2;     // folga para host que manda bloco maior
     mono.assign ((size_t) maxBlock, 0.0f);
-    out16.assign ((size_t) (maxBlock / step) + 16, 0.0f);
+    resampler.prepare (sampleRate, maxBlock);
 }
 
 void TranscricaoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -127,8 +194,11 @@ void TranscricaoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     juce::ScopedNoDenormals noDenormals;
     const int n = buffer.getNumSamples();
     const int chs = juce::jmin (buffer.getNumChannels(), getTotalNumInputChannels());
+    const auto now = juce::Time::currentTimeMillis();
+    lastBlockMs.store (now);                    // o host chamou (mesmo sem canais de entrada)
+    lastInputChannels.store (chs);
+    lastBlockSize.store (n);
     if (n <= 0 || chs <= 0) return;
-    lastBlockMs.store (juce::Time::currentTimeMillis());
 
     // o áudio passa intacto: só lemos o buffer
     if (n > (int) mono.size()) return;          // bloco maior que o anunciado: não aloca aqui
@@ -142,40 +212,23 @@ void TranscricaoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const auto range = juce::FloatVectorOperations::findMinAndMax (mono.data(), n);
     const float peak = juce::jmax (std::abs (range.getStart()), std::abs (range.getEnd()));
     const float db = juce::Decibels::gainToDecibels (peak, -100.0f);
+    if (db > -75.0f) lastSignalMs.store (now);
     const float prev = levelDb.load();
     levelDb.store (db > prev ? db : juce::jmax (db, prev - 0.8f));
 
     const bool on = transcribeParam->load() > 0.5f;
     transcriber.setActive (on);
-    if (! on) return;
 
-    aa1.processSamples (mono.data(), n);
-    aa2.processSamples (mono.data(), n);
+    // "Silenciar saída": o plugin continua lendo, mas a faixa fica muda
+    // (dá para transcrever sem se ouvir no retorno)
+    if (muteParam->load() > 0.5f)
+        buffer.clear();
 
-    // reamostragem linear (o sinal já está limitado a 7 kHz)
-    int produced = 0;
-    const int cap = (int) out16.size();
-    while (phase < (double) (n - 1) && produced < cap)
-    {
-        float v;
-        if (phase < 0.0)
-        {
-            const float f = (float) (phase + 1.0);
-            v = prevSample + (mono[0] - prevSample) * f;
-        }
-        else
-        {
-            const int i = (int) phase;
-            const float f = (float) (phase - i);
-            v = mono[(size_t) i] + (mono[(size_t) i + 1] - mono[(size_t) i]) * f;
-        }
-        out16[(size_t) produced++] = v;
-        phase += step;
-    }
-    phase -= (double) n;
-    prevSample = mono[(size_t) n - 1];
+    // com a entrada direta da placa, quem alimenta o motor é ela, não a faixa
+    if (! on || directActive.load()) return;
 
-    transcriber.pushAudio (out16.data(), produced);
+    const int produced = resampler.process (mono.data(), n);
+    transcriber.pushAudio (resampler.output(), produced);
 }
 
 void TranscricaoProcessor::updateTrackProperties (const TrackProperties& p)
@@ -197,7 +250,47 @@ void TranscricaoProcessor::updateTrackProperties (const TrackProperties& p)
 
 bool TranscricaoProcessor::isReceivingAudio() const noexcept
 {
-    return juce::Time::currentTimeMillis() - lastBlockMs.load() < 1500;
+    return getAudioStatus() != AudioStatus::notCalled && getAudioStatus() != AudioStatus::noInputChannels;
+}
+
+TranscricaoProcessor::AudioStatus TranscricaoProcessor::getAudioStatus() const noexcept
+{
+    const auto now = juce::Time::currentTimeMillis();
+    if (directActive.load() && direct != nullptr)
+    {
+        if (now - direct->getLastCallbackMs() > 1500) return AudioStatus::notCalled;
+        if (now - direct->getLastSignalMs() > 8000)   return AudioStatus::silence;
+        return AudioStatus::ok;
+    }
+    if (now - lastBlockMs.load() > 1500)  return AudioStatus::notCalled;
+    if (lastInputChannels.load() <= 0)    return AudioStatus::noInputChannels;
+    if (now - lastSignalMs.load() > 8000) return AudioStatus::silence;
+    return AudioStatus::ok;
+}
+
+void TranscricaoProcessor::timerCallback()
+{
+    // registra no log o que o host está fazendo, só quando muda (para suporte)
+    const auto st = getAudioStatus();
+    if (! loggedHost)
+    {
+        loggedHost = true;
+        tav::debugLog ("audio", "host: " + juce::String (juce::PluginHostType().getHostDescription())
+                       + " | formato: " + juce::AudioProcessor::getWrapperTypeDescription (wrapperType)
+                       + " | entradas: " + juce::String (getTotalNumInputChannels())
+                       + " | saidas: " + juce::String (getTotalNumOutputChannels())
+                       + " | " + juce::String (getSampleRate(), 0) + " Hz");
+    }
+    if (st != loggedStatus)
+    {
+        loggedStatus = st;
+        const char* what = st == AudioStatus::notCalled       ? "o host NAO esta chamando o plugin (faixa sem processamento)"
+                         : st == AudioStatus::noInputChannels ? "o host chama o plugin, mas SEM canais de entrada"
+                         : st == AudioStatus::silence         ? "chamando, mas so silencio na entrada"
+                                                              : "audio chegando";
+        tav::debugLog ("audio", juce::String (what) + " | canais: " + juce::String (lastInputChannels.load())
+                       + " | bloco: " + juce::String (lastBlockSize.load()));
+    }
 }
 
 //==============================================================================
